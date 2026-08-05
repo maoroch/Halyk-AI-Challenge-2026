@@ -1,0 +1,93 @@
+# ==========================================
+# Python-специфичные файлы
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Виртуальные окружения
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Тесты и логи
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+*.log
+
+# IDE и редакторы кода
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# ==========================================
+# Специфика Halyk AI Challenge
+# ==========================================
+
+# Игнорируем папки с входящими данными (PDF-документы и реестры транзакций)
+# Не загружайте в публичный репозиторий конфиденциальные или объемные файлы датасета!
+data/
+dataset/
+datasets/
+raw_data/
+temp_extracted/
+temp/
+
+# Архивы и файлы данных
+*.zip
+*.rar
+*.tar.gz
+*.pdf
+*.xlsx
+*.csv
+
+# API ключи и секреты (ОБЯЗАТЕЛЬНО К ИГНОРИРОВАНИЮ!)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Разрешаем коммитить шаблонные файлы и финальный результат (если требуется)
+!Submission.json
+!.env.example
