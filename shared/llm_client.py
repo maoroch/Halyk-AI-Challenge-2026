@@ -11,8 +11,8 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "qwen/qwen-2.5-72b-instruct:free")
-FALLBACK_MODEL = os.getenv("OPENROUTER_FALLBACK_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+FALLBACK_MODEL = os.getenv("OPENROUTER_FALLBACK_MODEL", "inclusionai/ling-3.0-flash:free")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
@@ -70,26 +70,22 @@ class LLMClient:
                     return data["choices"][0]["message"]["content"]
 
                 if response.status_code == 402:
-                    logger.warning(
-                        "OpenRouter 402 Payment Required / Insufficient credits. Falling back to heuristic parsing."
-                    )
+                    logger.warning("Attempting automatic retry with openrouter/free model...")
+                    payload["model"] = "openrouter/free"
+                    free_res = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
+                    if free_res.status_code == 200:
+                        return free_res.json()["choices"][0]["message"]["content"]
+
+                    logger.warning("OpenRouter 402 Payment Required. Falling back to heuristic parsing.")
                     raise RuntimeError("OPENROUTER_INSUFFICIENT_CREDITS")
 
                 logger.warning(
                     f"Attempt {attempt}/{max_retries} failed with status {response.status_code}: {response.text}"
                 )
-                if response.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
-                    time.sleep(2 ** attempt)
-                    continue
-
-                # If primary model fails, try fallback free model
-                if selected_model != self.fallback_model:
-                    logger.info(f"Retrying with fallback free model {self.fallback_model}")
+                if response.status_code in (404, 429, 500, 502, 503, 504) and attempt < max_retries:
                     payload["model"] = self.fallback_model
-                    response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
-                    if response.status_code == 200:
-                        data = response.json()
-                        return data["choices"][0]["message"]["content"]
+                    time.sleep(1)
+                    continue
 
                 response.raise_for_status()
 
@@ -122,7 +118,6 @@ class LLMClient:
         try:
             return json.loads(raw_text)
         except json.JSONDecodeError:
-            # Fallback: extract json block from markdown ```json ... ```
             if "```json" in raw_text:
                 json_str = raw_text.split("```json")[1].split("```")[0].strip()
                 return json.loads(json_str)
