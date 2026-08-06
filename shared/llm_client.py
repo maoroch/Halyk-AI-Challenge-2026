@@ -64,23 +64,34 @@ class LLMClient:
 
         for attempt in range(1, max_retries + 1):
             try:
-                response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
+                response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
-                    return data["choices"][0]["message"]["content"]
+                    if isinstance(data, dict) and "choices" in data and len(data["choices"]) > 0:
+                        choice = data["choices"][0]
+                        if "message" in choice and "content" in choice["message"]:
+                            return choice["message"]["content"]
 
-                if response.status_code == 402:
+                    logger.warning(f"OpenRouter response missing choices field: {response.text[:150]}")
+                    if attempt < max_retries:
+                        payload["model"] = self.fallback_model
+                        time.sleep(1)
+                        continue
+
+                if response.status_code in (401, 402):
                     logger.warning("Attempting automatic retry with openrouter/free model...")
                     payload["model"] = "openrouter/free"
-                    free_res = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
+                    free_res = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=10)
                     if free_res.status_code == 200:
-                        return free_res.json()["choices"][0]["message"]["content"]
+                        free_data = free_res.json()
+                        if isinstance(free_data, dict) and "choices" in free_data and len(free_data["choices"]) > 0:
+                            return free_data["choices"][0]["message"]["content"]
 
-                    logger.warning("OpenRouter 402 Payment Required. Falling back to heuristic parsing.")
-                    raise RuntimeError("OPENROUTER_INSUFFICIENT_CREDITS")
+                    logger.warning("OpenRouter API auth/credits error. Falling back to heuristic parsing.")
+                    raise RuntimeError("OPENROUTER_AUTH_OR_CREDITS_ERROR")
 
                 logger.warning(
-                    f"Attempt {attempt}/{max_retries} failed with status {response.status_code}: {response.text}"
+                    f"Attempt {attempt}/{max_retries} failed with status {response.status_code}: {response.text[:150]}"
                 )
                 if response.status_code in (404, 429, 500, 502, 503, 504) and attempt < max_retries:
                     payload["model"] = self.fallback_model
@@ -108,12 +119,13 @@ class LLMClient:
         model: Optional[str] = None,
         temperature: float = 0.0
     ) -> Dict[str, Any]:
+        fmt = None if ("free" in (model or self.default_model)) else {"type": "json_object"}
         raw_text = self.completion(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
             temperature=temperature,
-            response_format={"type": "json_object"}
+            response_format=fmt
         )
         try:
             return json.loads(raw_text)

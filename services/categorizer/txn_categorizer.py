@@ -20,6 +20,7 @@ CATEGORIZATION_PROMPT = """Ты финансовый контролер.
 class TransactionCategorizer:
     def __init__(self, llm_client: Optional[LLMClient] = None):
         self.llm_client = llm_client or LLMClient()
+        self._cache = {}
 
     def categorize(
         self,
@@ -41,10 +42,14 @@ class TransactionCategorizer:
         if not numerator_definition or not numerator_definition.strip():
             return transactions
 
+        cache_key = (numerator_definition, metric_type, len(transactions))
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
         # Attempt LLM dynamic classification if configured and online
         if self.llm_client.is_configured():
             try:
-                txn_descriptions = "\n".join([f"{t.txn_id}: {t.counterparty} | {t.description}" for t in transactions[:60]])
+                txn_descriptions = "\n".join([f"{t.txn_id}: {t.counterparty} | {t.description}" for t in transactions[:40]])
                 prompt = f"Метрика: {numerator_definition}\nТранзакции:\n{txn_descriptions}"
 
                 res = self.llm_client.completion_json(prompt, system_prompt=CATEGORIZATION_PROMPT)
@@ -52,9 +57,10 @@ class TransactionCategorizer:
                     matched_ids = set(res)
                     filtered = [t for t in transactions if t.txn_id in matched_ids]
                     if filtered:
+                        self._cache[cache_key] = filtered
                         return filtered
             except Exception as e:
-                logger.error(f"LLM transaction categorization failed: {e}")
+                logger.warning(f"LLM categorization fallback to fast rules: {e}")
 
         # Deterministic offline keyword matching based on contract clause definition
         num_lower = numerator_definition.lower()
@@ -69,7 +75,6 @@ class TransactionCategorizer:
         elif "связан" in num_lower or "аффилир" in num_lower or metric_type == "RELATED_PARTY_LIMIT":
             matched = [t for t in transactions if any(w in (t.counterparty.lower() + " " + t.description.lower()) for w in ["holding", "управл", "вознагражден", "агентск", "консультац", "роялти", "дивиденд"])]
 
-        if matched:
-            return matched
-
-        return transactions
+        result = matched if matched else transactions
+        self._cache[cache_key] = result
+        return result
