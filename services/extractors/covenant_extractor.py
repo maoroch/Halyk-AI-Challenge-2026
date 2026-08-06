@@ -140,7 +140,10 @@ class CovenantExtractor:
         if self.llm_client.is_configured() and clause_text.strip():
             try:
                 res = self.llm_client.completion_json(clause_text, system_prompt=COVENANT_ANALYSIS_PROMPT)
-                return res.get("numerator_definition"), res.get("denominator_definition")
+                if isinstance(res, list) and len(res) > 0 and isinstance(res[0], dict):
+                    res = res[0]
+                if isinstance(res, dict):
+                    return res.get("numerator_definition"), res.get("denominator_definition")
             except Exception as e:
                 logger.error(f"LLM covenant definition extraction failed: {e}")
 
