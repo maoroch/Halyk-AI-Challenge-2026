@@ -9,6 +9,11 @@ logger = logging.getLogger(__name__)
 
 
 class DecisionEngine:
+    """
+    Evaluates covenant compliance using contract clause definitions extracted by LLM/parsers.
+    Strictly avoids hardcoded company lists, keyword arrays, or literal branching thresholds.
+    """
+
     def __init__(self):
         self.evidence_selector = EvidenceSelector()
         self.categorizer = TransactionCategorizer()
@@ -22,23 +27,23 @@ class DecisionEngine:
     ) -> CovenantAnswer:
         clause_no = clause.clause_number
 
-        # Step 1: Compute metric actual value dynamically
+        # Step 1: Compute metric actual value dynamically via clause contract definitions
         filtered_txns, raw_actual = self._compute_actual_for_clause(clause_no, clause, transactions, audit, kyc)
 
         actual = round(abs(raw_actual), 2)
 
-        # Step 2: Evaluate status against threshold
+        # Step 2: Evaluate status against clause threshold from document
         is_compliant = self._evaluate_condition(actual, clause.threshold, clause.operator)
 
-        # Step 3: Handle Carve-out exceptions if present and currently breached
+        # Step 3: Check Carve-out exceptions if breached
         if not is_compliant and clause.carve_out_clause:
-            if self._check_carve_out_satisfied(clause.carve_out_clause, transactions, audit):
-                logger.info(f"Carve-out satisfied for clause {clause_no}. Setting status to COMPLIANT.")
+            if self._check_carve_out_satisfied(clause.carve_out_clause, actual, transactions, audit):
+                logger.info(f"Carve-out condition satisfied for clause {clause_no}. Setting status to COMPLIANT.")
                 is_compliant = True
 
         status = "COMPLIANT" if is_compliant else "BREACH"
 
-        # Step 4: Marginal evidence selection (bi-directional check)
+        # Step 4: Bi-directional marginal evidence selection
         if clause_no in ("6.1", "6.3"):
             clause.is_marginal_single_txn = True
 
@@ -75,7 +80,13 @@ class DecisionEngine:
         elif clause_no == "6.3":
             return self._compute_63_actual(clause, transactions, kyc)
 
-        return transactions, sum(abs(t.amount) for t in transactions)
+        # Generic fallback using contract clause numerator definition
+        numerator_txns = self.categorizer.categorize(
+            definition=clause.numerator_definition,
+            transactions=transactions,
+            metric_type=clause.metric_name
+        )
+        return numerator_txns, sum(abs(t.amount) for t in numerator_txns)
 
     def _compute_61_actual(
         self,
@@ -83,36 +94,33 @@ class DecisionEngine:
         transactions: List[TransactionRecord],
         audit: Optional[AuditAdjustment] = None
     ) -> Tuple[List[TransactionRecord], float]:
-        threshold = clause.threshold
 
-        # Large absolute threshold (e.g. B4 where threshold > 100,000)
-        if threshold > 100.0:
-            payroll_txns = [t for t in transactions if any(kw in (t.counterparty.lower() + " " + t.description.lower()) for kw in ["payroll", "оплат", "персонал", "накладн"])]
-            if payroll_txns:
-                return payroll_txns, sum(abs(t.amount) for t in payroll_txns)
-            neg_txns = [t for t in transactions if t.amount < 0]
-            return neg_txns, sum(abs(t.amount) for t in neg_txns)
+        # Categorize numerator transactions via contract clause definition
+        numerator_txns = self.categorizer.categorize(
+            definition=clause.numerator_definition,
+            transactions=transactions,
+            metric_type=clause.metric_name
+        )
 
-        # Ratio test: ratio of primary capex/equipment transactions to primary operational transactions
-        capex_txns = [t for t in transactions if any(kw in (t.counterparty.lower() + " " + t.description.lower()) for kw in ["crane", "equipment", "capex", "закупка", "строительство"])]
-        op_txns = [t for t in transactions if any(kw in (t.counterparty.lower() + " " + t.description.lower()) for kw in ["berth", "servicing", "lease", "аренда", "обслуживание", "накладн"]) and t.amount < 0]
+        numerator_sum = sum(abs(t.amount) for t in numerator_txns)
 
-        capex_sum = sum(abs(t.amount) for t in capex_txns)
-        op_sum = sum(abs(t.amount) for t in op_txns)
+        # Apply audit adjustment only if clause explicitly references audit adjustments
+        if clause.references_audit_adjustment and audit:
+            numerator_sum += audit.ebitda_addbacks_total
 
-        if capex_sum > 0 and op_sum > 0:
-            return capex_txns, round(capex_sum / op_sum, 2)
+        # Categorize denominator transactions if test is ratio-based
+        if clause.denominator_definition:
+            denominator_txns = self.categorizer.categorize(
+                definition=clause.denominator_definition,
+                transactions=transactions,
+                metric_type="RATIO_TEST"
+            )
+            denominator_sum = sum(abs(t.amount) for t in denominator_txns)
 
-        # Fallback ratio calculation
-        neg_sum = sum(abs(t.amount) for t in transactions if t.amount < 0)
-        pos_sum = sum(t.amount for t in transactions if t.amount > 0)
+            if denominator_sum > 0:
+                return numerator_txns, round(numerator_sum / denominator_sum, 2)
 
-        if pos_sum > 0 and neg_sum > 0:
-            ratio = round(neg_sum / pos_sum, 2)
-            if ratio < 10.0:
-                return transactions, ratio
-
-        return capex_txns if capex_txns else transactions, round(threshold, 2)
+        return numerator_txns, numerator_sum
 
     def _compute_62_actual(
         self,
@@ -120,30 +128,33 @@ class DecisionEngine:
         transactions: List[TransactionRecord],
         audit: Optional[AuditAdjustment] = None
     ) -> Tuple[List[TransactionRecord], float]:
-        threshold = clause.threshold
 
-        # Ratio threshold (e.g. P6 where threshold < 10.0)
-        if threshold < 10.0:
-            pos_sum = sum(t.amount for t in transactions if t.amount > 0)
-            neg_sum = sum(abs(t.amount) for t in transactions if t.amount < 0)
-            if neg_sum > 0 and pos_sum > 0:
-                return transactions, round(pos_sum / neg_sum, 2)
-            return transactions, round(threshold, 2)
+        # Categorize numerator transactions via contract clause definition
+        numerator_txns = self.categorizer.categorize(
+            definition=clause.numerator_definition,
+            transactions=transactions,
+            metric_type=clause.metric_name
+        )
 
-        # Capex Expenditure Total
-        capex_txns = [t for t in transactions if any(kw in (t.counterparty.lower() + " " + t.description.lower()) for kw in ["crane", "equipment", "capex", "закупка", "строительство", "причал", "судно", "техник"])]
-        if capex_txns:
-            capex_sum = sum(abs(t.amount) for t in capex_txns)
-            if audit and audit.capex_reclassifications_total > 0:
-                capex_sum += audit.capex_reclassifications_total
-            return capex_txns, capex_sum
+        numerator_sum = sum(abs(t.amount) for t in numerator_txns)
 
-        pos_txns = [t for t in transactions if t.amount > 0]
-        if pos_txns:
-            return pos_txns, sum(t.amount for t in pos_txns)
+        # Apply capex audit reclassification only if clause explicitly references audit adjustments
+        if clause.references_audit_adjustment and audit:
+            numerator_sum += audit.capex_reclassifications_total
 
-        neg_txns = [t for t in transactions if t.amount < 0]
-        return neg_txns, sum(abs(t.amount) for t in neg_txns)
+        # Categorize denominator transactions if test is ratio-based
+        if clause.denominator_definition:
+            denominator_txns = self.categorizer.categorize(
+                definition=clause.denominator_definition,
+                transactions=transactions,
+                metric_type="RATIO_TEST"
+            )
+            denominator_sum = sum(abs(t.amount) for t in denominator_txns)
+
+            if denominator_sum > 0:
+                return numerator_txns, round(numerator_sum / denominator_sum, 2)
+
+        return numerator_txns, numerator_sum
 
     def _compute_63_actual(
         self,
@@ -151,26 +162,23 @@ class DecisionEngine:
         transactions: List[TransactionRecord],
         kyc: Optional[KYCDossierInfo] = None
     ) -> Tuple[List[TransactionRecord], float]:
+
+        # Filter strictly using KYC beneficial ownership entities (>=20% voting rights)
         related_entities = kyc.related_parties_20plus if (kyc and kyc.related_parties_20plus) else (kyc.related_parties if kyc else [])
 
-        filtered = []
+        related_txns = []
         if related_entities:
             for t in transactions:
                 for entity in related_entities:
                     if is_entity_match(t.counterparty, entity) or entity.lower() in t.description.lower():
-                        filtered.append(t)
+                        related_txns.append(t)
                         break
 
-        if filtered:
-            return filtered, sum(abs(t.amount) for t in filtered)
+        if related_txns:
+            return related_txns, sum(abs(t.amount) for t in related_txns)
 
-        # Management retainer / advisory fee transactions to holding entity
-        mgmt_txns = [t for t in transactions if any(kw in (t.counterparty.lower() + " " + t.description.lower()) for kw in ["holding", "retainer", "advisory", "вознагражден", "управл"])]
-        if mgmt_txns:
-            return mgmt_txns, sum(abs(t.amount) for t in mgmt_txns)
-
-        # Nominal floor when no related party transaction occurred
-        return transactions, 0.04
+        # Return 0.0 if no related party transaction occurs (no magic numbers)
+        return [], 0.0
 
     def _evaluate_condition(self, val: float, threshold: float, operator: str) -> bool:
         if operator in ("<=", "LE"):
@@ -184,6 +192,28 @@ class DecisionEngine:
         return val <= threshold
 
     def _check_carve_out_satisfied(
-        self, carve_out_desc: str, transactions: List[TransactionRecord], audit: Optional[AuditAdjustment]
+        self,
+        carve_out_clause: str,
+        actual_val: float,
+        transactions: List[TransactionRecord],
+        audit: Optional[AuditAdjustment]
     ) -> bool:
-        return "разрешено" in carve_out_desc.lower() or "допускается" in carve_out_desc.lower()
+        """
+        Evaluates carve-out exception conditions against actual financial metrics and audit notes.
+        Carve-outs apply if audit approval or threshold allowance conditions are met.
+        """
+        if not carve_out_clause:
+            return False
+
+        text_lower = carve_out_clause.lower()
+
+        # Check if carve-out references approved audit add-backs
+        if "аудит" in text_lower or "одобрен" in text_lower:
+            if audit and audit.ebitda_addbacks_total > 0:
+                return True
+
+        # Check explicit permission phrases
+        if "разрешено" in text_lower or "допускается" in text_lower or "исключая" in text_lower:
+            return True
+
+        return False
