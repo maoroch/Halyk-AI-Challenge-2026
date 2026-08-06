@@ -5,13 +5,13 @@
   "answers": {
     "P1": {
       "6.1": {
-        "status": "BREACH",
-        "actual": 182858228.5,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "BREACH",
-        "actual": 182858228.5,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -22,13 +22,13 @@
     },
     "P2": {
       "6.1": {
-        "status": "BREACH",
-        "actual": 181767678.19,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "BREACH",
-        "actual": 181767678.19,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -39,13 +39,13 @@
     },
     "P3": {
       "6.1": {
-        "status": "BREACH",
-        "actual": 192341958.2,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "BREACH",
-        "actual": 192341958.2,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -56,13 +56,13 @@
     },
     "P4": {
       "6.1": {
-        "status": "BREACH",
-        "actual": 145814373.19,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "BREACH",
-        "actual": 145814373.19,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -73,13 +73,13 @@
     },
     "P5": {
       "6.1": {
-        "status": "COMPLIANT",
-        "actual": 3524470.27,
+        "status": "BREACH",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "COMPLIANT",
-        "actual": 8214663.28,
+        "status": "BREACH",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -90,13 +90,13 @@
     },
     "P6": {
       "6.1": {
-        "status": "BREACH",
-        "actual": 161375176.87,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "BREACH",
-        "actual": 161375176.87,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -107,13 +107,13 @@
     },
     "P7": {
       "6.1": {
-        "status": "BREACH",
-        "actual": 191877460.15,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "BREACH",
-        "actual": 191877460.15,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -124,13 +124,13 @@
     },
     "P8": {
       "6.1": {
-        "status": "BREACH",
-        "actual": 7703167.86,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
         "status": "COMPLIANT",
-        "actual": 1918204.36,
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -141,13 +141,13 @@
     },
     "P9": {
       "6.1": {
-        "status": "BREACH",
-        "actual": 165895883.41,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "BREACH",
-        "actual": 165895883.41,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -158,13 +158,13 @@
     },
     "P10": {
       "6.1": {
-        "status": "BREACH",
-        "actual": 192532649.1,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "BREACH",
-        "actual": 192532649.1,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -175,13 +175,13 @@
     },
     "B1": {
       "6.1": {
-        "status": "BREACH",
-        "actual": 166172697.03,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "BREACH",
-        "actual": 166172697.03,
+        "status": "COMPLIANT",
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -193,12 +193,12 @@
     "B4": {
       "6.1": {
         "status": "BREACH",
-        "actual": 1737697.47,
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.2": {
         "status": "COMPLIANT",
-        "actual": 1737697.47,
+        "actual": 0.0,
         "evidence_txn_id": null
       },
       "6.3": {

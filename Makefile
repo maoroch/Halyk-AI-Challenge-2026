@@ -1,4 +1,4 @@
-.PHONY: setup run validate score test clean
+.PHONY: setup run validate score test test-llm clean
 
 VENV = .venv
 PYTHON = $(VENV)/bin/python
@@ -19,6 +19,9 @@ score:
 
 test:
 	$(PYTHON) -m pytest tests/
+
+test-llm:
+	$(PYTHON) scripts/test_llm.py
 
 clean:
 	rm -rf __pycache__ .pytest_cache

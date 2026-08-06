@@ -106,7 +106,7 @@ class CovenantExtractor:
                 ref_audit = any(w in text_lower for w in ["корректировк", "аудит", "переклассифи", "восстановл", "отсечен"])
                 ref_kyc = any(w in text_lower for w in ["связан", "аффилир", "дочерн", "kyc", "бенфициа"])
 
-                # Try LLM or fallback deterministic extraction for definitions
+                # LLM extraction ONLY (No fallback rules)
                 num_def, den_def = self._extract_definitions(raw_clause_text)
 
                 covenants_map[clause_key] = CovenantClause(
@@ -147,23 +147,5 @@ class CovenantExtractor:
             except Exception as e:
                 logger.error(f"LLM covenant definition extraction failed: {e}")
 
-        # Deterministic fallback definition extraction
-        text_lower = clause_text.lower()
-
-        if "капитальн" in text_lower or "capex" in text_lower:
-            num_def = "Капитальные затраты и приобретение оборудования"
-            den_def = None
-        elif "связан" in text_lower or "аффилир" in text_lower:
-            num_def = "Операции со связанными сторонами и управляющие платежи"
-            den_def = None
-        elif "персонал" in text_lower or "оплат" in text_lower:
-            num_def = "Расходы на персонал и накладные расходы"
-            den_def = None
-        elif "коэффициент" in text_lower or "отношение" in text_lower:
-            num_def = "Совокупный долг и операционные расходы"
-            den_def = "EBITDA и выручка"
-        else:
-            num_def = "Совокупные расходы по договору"
-            den_def = None
-
-        return num_def, den_def
+        # Pure LLM mode: NO deterministic fallbacks
+        return None, None

@@ -40,13 +40,13 @@ class TransactionCategorizer:
             return []
 
         if not numerator_definition or not numerator_definition.strip():
-            return transactions
+            return []
 
         cache_key = (numerator_definition, metric_type, len(transactions))
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        # Attempt LLM dynamic classification if configured and online
+        # LLM dynamic classification ONLY (No fallback rules)
         if self.llm_client.is_configured():
             try:
                 txn_descriptions = "\n".join([f"{t.txn_id}: {t.counterparty} | {t.description}" for t in transactions[:40]])
@@ -56,25 +56,11 @@ class TransactionCategorizer:
                 if isinstance(res, list) and len(res) > 0:
                     matched_ids = set(res)
                     filtered = [t for t in transactions if t.txn_id in matched_ids]
-                    if filtered:
-                        self._cache[cache_key] = filtered
-                        return filtered
+                    self._cache[cache_key] = filtered
+                    return filtered
             except Exception as e:
-                logger.warning(f"LLM categorization fallback to fast rules: {e}")
+                logger.error(f"LLM transaction categorization failed: {e}")
 
-        # Deterministic offline keyword matching based on contract clause definition
-        num_lower = numerator_definition.lower()
-        matched = []
-
-        if "капитальн" in num_lower or "capex" in num_lower or metric_type == "CAPEX_LIMIT":
-            matched = [t for t in transactions if any(w in (t.counterparty.lower() + " " + t.description.lower()) for w in ["оборудован", "строительст", "капитальн", "модернизац", "техник", "кран", "судно", "причал", "монтаж", "реконструкц", "capex", "equipment"])]
-        elif "персонал" in num_lower or "накладн" in num_lower or metric_type == "OVERHEAD_PERSONNEL_LIMIT":
-            matched = [t for t in transactions if any(w in (t.counterparty.lower() + " " + t.description.lower()) for w in ["зарплат", "персонал", "накладн", "аренд", "коммунал", "офис", "администрат", "услуг", "содержани", "payroll", "retainer"])]
-        elif "выручк" in num_lower or "поступлен" in num_lower or metric_type == "REVENUE_LIMIT":
-            matched = [t for t in transactions if t.amount > 0 and any(w in (t.counterparty.lower() + " " + t.description.lower()) for w in ["выручк", "поступлен", "расчет", "продаж", "settlement", "sales"])]
-        elif "связан" in num_lower or "аффилир" in num_lower or metric_type == "RELATED_PARTY_LIMIT":
-            matched = [t for t in transactions if any(w in (t.counterparty.lower() + " " + t.description.lower()) for w in ["holding", "управл", "вознагражден", "агентск", "консультац", "роялти", "дивиденд"])]
-
-        result = matched if matched else transactions
-        self._cache[cache_key] = result
-        return result
+        # Pure LLM mode: NO offline keyword fallbacks
+        self._cache[cache_key] = []
+        return []
