@@ -1,0 +1,211 @@
+{
+  "team": "AI-Covenant-Team",
+  "contact_email": "ai-team@halyk-challenge.kz",
+  "model": "claude-3.5-sonnet",
+  "answers": {
+    "P1": {
+      "6.1": {
+        "status": "BREACH",
+        "actual": 0.2,
+        "evidence_txn_id": "TXN-P1-0010"
+      },
+      "6.2": {
+        "status": "BREACH",
+        "actual": 0.26,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 36643715.78,
+        "evidence_txn_id": null
+      }
+    },
+    "P2": {
+      "6.1": {
+        "status": "BREACH",
+        "actual": 0.27,
+        "evidence_txn_id": null
+      },
+      "6.2": {
+        "status": "BREACH",
+        "actual": 0.41,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 34078343.14,
+        "evidence_txn_id": null
+      }
+    },
+    "P3": {
+      "6.1": {
+        "status": "BREACH",
+        "actual": 2.72,
+        "evidence_txn_id": null
+      },
+      "6.2": {
+        "status": "BREACH",
+        "actual": 0.37,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 26765041.08,
+        "evidence_txn_id": null
+      }
+    },
+    "P4": {
+      "6.1": {
+        "status": "BREACH",
+        "actual": 0.19,
+        "evidence_txn_id": "TXN-P4-0053"
+      },
+      "6.2": {
+        "status": "BREACH",
+        "actual": 0.75,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 21395728.08,
+        "evidence_txn_id": null
+      }
+    },
+    "P5": {
+      "6.1": {
+        "status": "BREACH",
+        "actual": 0.25,
+        "evidence_txn_id": null
+      },
+      "6.2": {
+        "status": "BREACH",
+        "actual": 3524470.27,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 30613398.95,
+        "evidence_txn_id": null
+      }
+    },
+    "P6": {
+      "6.1": {
+        "status": "BREACH",
+        "actual": 0.4,
+        "evidence_txn_id": null
+      },
+      "6.2": {
+        "status": "BREACH",
+        "actual": 0.25,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 10296294.31,
+        "evidence_txn_id": null
+      }
+    },
+    "P7": {
+      "6.1": {
+        "status": "BREACH",
+        "actual": 1.35,
+        "evidence_txn_id": null
+      },
+      "6.2": {
+        "status": "BREACH",
+        "actual": 0.74,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 19961198.76,
+        "evidence_txn_id": null
+      }
+    },
+    "P8": {
+      "6.1": {
+        "status": "BREACH",
+        "actual": 7361049.21,
+        "evidence_txn_id": "TXN-P8-0038"
+      },
+      "6.2": {
+        "status": "COMPLIANT",
+        "actual": 1918204.36,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 8678106.35,
+        "evidence_txn_id": null
+      }
+    },
+    "P9": {
+      "6.1": {
+        "status": "BREACH",
+        "actual": 0.16,
+        "evidence_txn_id": null
+      },
+      "6.2": {
+        "status": "BREACH",
+        "actual": 0.19,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 30547207.58,
+        "evidence_txn_id": null
+      }
+    },
+    "P10": {
+      "6.1": {
+        "status": "BREACH",
+        "actual": 5.68,
+        "evidence_txn_id": null
+      },
+      "6.2": {
+        "status": "BREACH",
+        "actual": 0.18,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 17219367.64,
+        "evidence_txn_id": null
+      }
+    },
+    "B1": {
+      "6.1": {
+        "status": "BREACH",
+        "actual": 0.35,
+        "evidence_txn_id": "TXN-B1-0048"
+      },
+      "6.2": {
+        "status": "BREACH",
+        "actual": 0.43,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 21285490.68,
+        "evidence_txn_id": null
+      }
+    },
+    "B4": {
+      "6.1": {
+        "status": "COMPLIANT",
+        "actual": 32282738.03,
+        "evidence_txn_id": null
+      },
+      "6.2": {
+        "status": "COMPLIANT",
+        "actual": 1737697.47,
+        "evidence_txn_id": null
+      },
+      "6.3": {
+        "status": "BREACH",
+        "actual": 12066569.68,
+        "evidence_txn_id": null
+      }
+    }
+  }
+}

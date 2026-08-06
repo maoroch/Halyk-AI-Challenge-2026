@@ -1,109 +1,134 @@
-# Halyk AI Challenge: Virtual Bank Expert Agent 🤖💼
+# Halyk AI Challenge 2026: AI Agent for Corporate Credit Covenant Verification
 
-Этот репозиторий содержит решение для хакатона **Halyk AI Challenge**. Проект представляет собой автономного AI-агента («виртуального эксперта банка»), способного автоматически обрабатывать пакеты документов (PDF-инструкции, регламенты) и реестры транзакций, сопоставлять их, выполнять необходимые расчеты и формировать итоговое аргументированное решение банка в формате `Submission.json`.
-
----
-
-## 📌 Описание задачи и логики агента
-
-Основная цель агента — заменить ручную работу банковского аналитика по проверке транзакций на соответствие внутренним правилам. Процесс работы агента разделен на следующие ключевые этапы:
-
-1. **Парсинг и извлечение данных:** Чтение десятков PDF-документов различных типов, качественное извлечение таблиц, лимитов, версий документов и актуальных правил.
-2. **Фильтрация и актуализация:** Определение актуальных версий документов и отсеивание устаревших банковских правил.
-3. **Анализ транзакций:** Чтение реестра транзакций и сопоставление ID транзакций с правилами, извлеченными из актуальных PDF-документов.
-4. **Финансовые вычисления:** Расчет требуемых показателей и проверка ограничений банка.
-5. **Генерация обоснованного ответа:** Формирование финального решения с доказательной базой (ссылки на конкретные разделы документов и формулы расчетов) в файл `Submission.json`.
+> **Technical Architecture & Agent Handoff Guide**
+> This repository contains an autonomous, single-process AI agent system (`halyk-ai-agent`) built to verify corporate credit covenants, audit reclassifications, and transaction ledgers for the Halyk AI Challenge 2026.
 
 ---
 
-## 📂 Структура проекта
+## 1. Executive Summary & Problem Context
 
-Рекомендуемая файловая структура для корректной работы агента:
+The goal is to automatically evaluate corporate loan covenant compliance across 12 borrower scenarios (`P1`–`P10`, `B1`, `B4`) and 3 covenant clauses per borrower (`6.1`, `6.2`, `6.3` — 36 total cells).
 
-```directory
-.
-├── data/
-│   ├── raw/                 # Сюда распаковывается архив от организаторов
-│   │   ├── documents/       # Папка с PDF-документами
-│   │   └── transactions.csv # Реестр транзакций
-│   └── templates/
-│       └── template.json    # Шаблон ответа от организаторов
-├── src/
-│   ├── __init__.py
-│   ├── config.py            # Конфигурационные файлы (пути, параметры LLM)
-│   ├── parser.py            # Модуль парсинга PDF и таблиц
-│   ├── analyzer.py          # Логика агента (сопоставление правил и транзакций)
-│   ├── calculator.py        # Финансовые и математические расчеты
-│   └── utils.py             # Вспомогательные функции (валидация JSON, логирование)
-├── main.py                  # Главный скрипт для запуска всего pipeline
-├── requirements.txt         # Список зависимостей
-├── Submission.json          # Итоговый сгенерированный файл с ответами
-└── README.md                # Описание решения и инструкция по запуску
+### Inputs
+1. **Unstructured Documents** (`docs/agentic-bank-public/documents/`): PDF and CSV files containing Credit Agreements, Audit Notes, KYC/AML dossiers, decoy HR/IT files, and corrupt 0-byte edge-case files.
+2. **Transaction Ledger** (`docs/agentic-bank-public/master_ledger_2025.csv`): 1,473 transaction lines across 561 accounts (12 target scenario accounts + ~550 noise accounts).
+3. **Submission Template** (`docs/agentic-bank-public/submission_template.json`): Template defining scenario keys and empty answer cells.
+
+### Output
+A single valid **`submission.json`** matching `submission_template.json` structure, where each of the 36 cells contains:
+- `status`: `"COMPLIANT"` or `"BREACH"` (uppercase string).
+- `actual`: Positive float rounded to 2 decimal places (metric value limited by covenant).
+- `evidence_txn_id`: Single marginal transaction ID (`"TXN-..."`) flipping status between `BREACH` $\leftrightarrow$ `COMPLIANT` when removed, or `null` for aggregate/ratio tests.
+
+---
+
+## 2. System Architecture & Directory Structure
+
+```
+Halyk-AI-Challenge-2026/
+├── services/
+│   ├── ingestion/
+│   │   └── ingestor.py              # Parallel multithreaded PDF loading + PyMuPDF/PyPDF/pdfplumber + Hybrid OCR fallback (pytesseract) + 0-byte corrupt bypass
+│   ├── classifier/
+│   │   └── doc_classifier.py        # Classifies doc types (Loan Agreement, Audit Note, KYC, Decoy) and maps exact account_id
+│   ├── extractors/
+│   │   ├── covenant_extractor.py    # Extracts clauses 6.1, 6.2, 6.3 parameters & thresholds (LLM + regex parser)
+│   │   └── adjustment_extractor.py  # Extracts audit EBITDA add-backs, capex reclasses, Note 7 period cut-offs (e.g. TXN-P1-0045), KYC >=20% beneficial ownership entities
+│   ├── ledger/
+│   │   └── ledger_service.py        # Filters master ledger by account_id and scenario_id, applying auditor period cut-offs
+│   ├── decision/
+│   │   └── decision_engine.py       # Evaluates positive actual metrics, covenant thresholds, carve-out exceptions, and compliance status
+│   ├── evidence/
+│   │   └── evidence_selector.py     # Bi-directional marginal transaction selection algorithm (single transaction flipping status BREACH <-> COMPLIANT)
+│   ├── response_builder/
+│   │   └── builder.py               # Populates submission_template.json without key alterations
+│   ├── audit_trail/
+│   │   └── audit_trail_service.py   # Generates machine-readable audit_trail.json and HTML compliance report (reports/audit_report.html)
+│   ├── dashboard/
+│   │   └── dashboard_generator.py   # Builds Executive Credit Risk HTML Dashboard (reports/dashboard.html)
+│   ├── currency/
+│   │   └── currency_service.py      # Offline Multi-Currency FX Conversion & Document Exchange Rate Parser (KZT, EUR, RUB -> USD)
+│   └── orchestrator/
+│       └── runner.py                # End-to-end pipeline driver with fault-tolerant report generation
+├── shared/
+│   ├── entity_normalizer.py         # Normalizes bank counterparty names for KYC related-party tests (stripping LLP, JSC, Inc, Corp, L.L.P., ТОО, АО)
+│   ├── llm_client.py                # OpenRouter API client with retries, free model fallbacks, and instant error bypass
+│   └── schemas.py                   # Pydantic data models for inter-module contracts
+├── scripts/
+│   ├── run_pipeline.py              # Main CLI runner with Rich terminal interface
+│   ├── run_pipeline.sh              # Executable 1-command shell script
+│   ├── validate_submission.py       # 100% structural JSON & sanity validator
+│   └── score.py                     # Local evaluator against ground_truth.json using official formula
+├── tests/
+│   ├── test_ingestion.py            # Unit test for 0-byte corrupt PDF handling
+│   ├── test_evidence_selector.py    # Unit test for bi-directional evidence selection algorithm
+│   ├── test_fintech_features.py     # Unit test for normalizer, FX converter, audit trail, and dashboard
+│   └── test_pipeline_e2e.py         # End-to-end integration test
+├── Dockerfile                       # Container definition with Tesseract OCR support
+├── docker-compose.yml               # Docker compose configuration
+├── Makefile                         # CLI targets (setup, run, validate, score, test)
+├── requirements.txt                 # Python dependencies
+└── README.md                        # Project documentation & AI agent handoff guide
 ```
 
 ---
 
-## 🛠️ Системные требования и установка
+## 3. Key Technical Capabilities & Edge-Case Handling
 
-### Пререквизиты
-* Python 3.10 или выше
-* API-ключ выбранного провайдера LLM (например, OpenAI, Anthropic) **ИЛИ** развернутая локально модель через Ollama / vLLM.
+1. **0-Byte & Corrupt PDF Resilience**:
+   - `ingestor.py` detects empty/0-byte files (e.g. `82954f7cc62a.pdf`) and corrupt files, marking `is_valid=False` without crashing.
 
-### Инструкция по установке
+2. **Scanned PDF Hybrid OCR Fallback**:
+   - When extracted PDF text length is < 50 characters, `ingestor.py` triggers pixmap image rendering and `pytesseract` OCR text extraction.
 
-1. Клонируйте репозиторий:
-   ```bash
-   git clone https://github.com/ВАШ_ПРОФИЛЬ/ВАШ_РЕПОЗИТОРИЙ.git
-   cd ВАШ_РЕПОЗИТОРИЙ
-   ```
+3. **Entity Resolution & Account Mapping**:
+   - Maps `account_id` (e.g., `ACC-7801`) to `scenario_id` (`P1`) via transaction ID prefixes (`TXN-P1-...`).
+   - `doc_classifier.py` uses exact `ACC-\d{4}` account ID extraction to avoid entity resolution traps. `entity_normalizer.py` is strictly isolated for related-party matching in KYC counterparty names.
 
-2. Создайте и активируйте виртуальное окружение:
-   ```bash
-   python -m venv venv
-   # Для Windows:
-   venv\Scripts\activate
-   # Для macOS/Linux:
-   source venv/bin/activate
-   ```
+4. **Auditor Period Cut-Off Extraction**:
+   - `adjustment_extractor.py` parses transaction exclusions from Audit Notes (e.g. Note 7 specifying `TXN-P1-0045` belongs to 2026) and excludes them from 2025 calculations.
 
-3. Установите все зависимости:
-   ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
+5. **KYC Beneficial Ownership Threshold (≥20% Rule)**:
+   - `adjustment_extractor.py` extracts beneficial ownership percentages from KYC dossiers and filters entities with voting rights ≥ 20.0% (`related_parties_20plus`) for Clause 6.3 related-party tests.
 
-4. Настройте переменные окружения. Создайте файл `.env` в корневой директории проекта и укажите ваши параметры:
-   ```env
-   # Пример для OpenAI API:
-   OPENAI_API_KEY=your_openai_api_key_here
-   OPENAI_MODEL_NAME=gpt-4o
-   
-   # Или для локальной модели через Ollama:
-   # OLLAMA_BASE_URL=http://localhost:11434
-   # LOCAL_MODEL_NAME=qwen2.5-coder:14b
-   ```
+6. **Bi-Directional Marginal Evidence Selection Algorithm**:
+   - `evidence_selector.py` evaluates single transactions in both directions (`BREACH` $\rightarrow$ `COMPLIANT` and `COMPLIANT` $\rightarrow$ `BREACH`). Returns transaction ID if exactly 1 transaction flips status.
+
+7. **Fault-Tolerant Compliance Audit Trail & Executive Dashboard**:
+   - `runner.py` saves `submission.json` first, and wraps `audit_trail.json` and HTML reports in `try...except` blocks so report generation never blocks submission generation.
 
 ---
 
-## 🚀 Использование и запуск
+## 4. How to Run the Project
 
-Для запуска полного цикла обработки данных (распаковка архива, парсинг, анализ, расчеты и сохранение ответов) достаточно выполнить главную команду:
-
+### Environment Setup
 ```bash
-python main.py --data_zip path/to/dataset.zip
+# Create virtual environment and install dependencies
+make setup
+# or: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
-### Дополнительные параметры запуска:
-* `--data_zip` — путь к исходному zip-архиву с документами и реестром транзакций.
-* `--output` — путь для сохранения итогового файла (по умолчанию `./Submission.json`).
+### Execution Commands
+```bash
+# 1. Run full pipeline (generates submission.json, audit_trail.json, reports/)
+make run
+# or: ./scripts/run_pipeline.sh
+# or: .venv/bin/python scripts/run_pipeline.py
 
-После завершения работы скрипта в корне проекта появится валидный файл `Submission.json`.
+# 2. Validate structural integrity of submission.json (36 cells check)
+make validate
+# or: .venv/bin/python scripts/validate_submission.py
 
----
+# 3. Calculate local score against ground_truth.json
+make score
+# or: .venv/bin/python scripts/score.py
 
-## 🧠 Технические особенности решения
+# 4. Run full pytest automated test suite
+make test
+# or: .venv/bin/python -m pytest tests/
+```
 
-* **Парсинг PDF:** Для надежного извлечения текста и сложных табличных структур из банковских документов используется библиотека `pdfplumber` (или `PyPDF2` / `MarkItDown` в зависимости от формата).
-* **Анализ данных:** Модуль обработки реестра транзакций построен на `pandas`, что обеспечивает высокую скорость фильтрации и расчета финансовых агрегатов.
-* **Логика агента (Orchestration):** Логический слой построен на базе библиотеки `LangChain` / `LlamaIndex` (или кастомного графа решений), который декомпозирует задачу на подзадачи: поиск актуального документа ➡️ извлечение правил ➡️ расчет показателей по транзакциям ➡️ формирование аргументации.
-* **Формирование обоснования:** Промпты для LLM разработаны таким образом, чтобы модель генерировала структурированное обоснование («proof»), содержащее точные цитаты из регламентов и детальные шаги вычислений, что напрямую влияет на финальную оценку решения.
+### Docker Execution
+```bash
+docker-compose up --build
+```

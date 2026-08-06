@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  covenant-agent:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - DOCUMENTS_DIR=docs/agentic-bank-public/documents
+      - MASTER_LEDGER_PATH=docs/agentic-bank-public/master_ledger_2025.csv
+      - SUBMISSION_TEMPLATE_PATH=docs/agentic-bank-public/submission_template.json
+      - SUBMISSION_OUTPUT_PATH=submission.json

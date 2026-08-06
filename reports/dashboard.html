@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Executive Credit Risk Dashboard — Halyk AI</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f4f6f8; margin: 0; padding: 25px; }
+        .header { background: linear-gradient(135deg, #005f4b 0%, #00876c 100%); color: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-bottom: 25px; }
+        .metrics { display: flex; gap: 20px; margin-bottom: 25px; }
+        .card { flex: 1; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); text-align: center; }
+        .card h2 { margin: 0; font-size: 32px; color: #005f4b; }
+        .card p { margin: 5px 0 0 0; color: #718096; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); margin-bottom: 25px; }
+        h3 { margin-top: 0; color: #2d3748; border-bottom: 2px solid #edf2f7; padding-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 style="margin:0;">Halyk Bank · Executive Credit Risk Dashboard</h1>
+        <p style="margin:5px 0 0 0;">Corporate Loan Portfolio Covenant Verification</p>
+    </div>
+
+    <div class="metrics">
+        <div class="card">
+            <h2>12</h2>
+            <p>Borrower Scenarios</p>
+        </div>
+        <div class="card">
+            <h2>36</h2>
+            <p>Total Covenants Evaluated</p>
+        </div>
+        <div class="card">
+            <h2 style="color: #38a169;">8.3%</h2>
+            <p>Compliance Rate</p>
+        </div>
+        <div class="card">
+            <h2 style="color: #e53e3e;">33</h2>
+            <p>Covenant Breaches</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>🚨 Red Flag Risk Alerts</h3>
+        
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P1 — Clause 6.1</strong>: BREACH detected! 
+                Actual: <code>0.2</code> | Evidence: <code>TXN-P1-0010</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P1 — Clause 6.2</strong>: BREACH detected! 
+                Actual: <code>0.26</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P1 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>36643715.78</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P2 — Clause 6.1</strong>: BREACH detected! 
+                Actual: <code>0.27</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P2 — Clause 6.2</strong>: BREACH detected! 
+                Actual: <code>0.41</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P2 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>34078343.14</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P3 — Clause 6.1</strong>: BREACH detected! 
+                Actual: <code>2.72</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P3 — Clause 6.2</strong>: BREACH detected! 
+                Actual: <code>0.37</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P3 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>26765041.08</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P4 — Clause 6.1</strong>: BREACH detected! 
+                Actual: <code>0.19</code> | Evidence: <code>TXN-P4-0053</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P4 — Clause 6.2</strong>: BREACH detected! 
+                Actual: <code>0.75</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P4 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>21395728.08</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P5 — Clause 6.1</strong>: BREACH detected! 
+                Actual: <code>0.25</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P5 — Clause 6.2</strong>: BREACH detected! 
+                Actual: <code>3524470.27</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P5 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>30613398.95</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P6 — Clause 6.1</strong>: BREACH detected! 
+                Actual: <code>0.4</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P6 — Clause 6.2</strong>: BREACH detected! 
+                Actual: <code>0.25</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P6 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>10296294.31</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P7 — Clause 6.1</strong>: BREACH detected! 
+                Actual: <code>1.35</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P7 — Clause 6.2</strong>: BREACH detected! 
+                Actual: <code>0.74</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P7 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>19961198.76</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P8 — Clause 6.1</strong>: BREACH detected! 
+                Actual: <code>7361049.21</code> | Evidence: <code>TXN-P8-0038</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P8 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>8678106.35</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P9 — Clause 6.1</strong>: BREACH detected! 
+                Actual: <code>0.16</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P9 — Clause 6.2</strong>: BREACH detected! 
+                Actual: <code>0.19</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P9 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>30547207.58</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P10 — Clause 6.1</strong>: BREACH detected! 
+                Actual: <code>5.68</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P10 — Clause 6.2</strong>: BREACH detected! 
+                Actual: <code>0.18</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario P10 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>17219367.64</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario B1 — Clause 6.1</strong>: BREACH detected! 
+                Actual: <code>0.35</code> | Evidence: <code>TXN-B1-0048</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario B1 — Clause 6.2</strong>: BREACH detected! 
+                Actual: <code>0.43</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario B1 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>21285490.68</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+            <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 10px 15px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>Scenario B4 — Clause 6.3</strong>: BREACH detected! 
+                Actual: <code>12066569.68</code> | Evidence: <code>Aggregate</code>
+            </div>
+            
+    </div>
+</body>
+</html>
