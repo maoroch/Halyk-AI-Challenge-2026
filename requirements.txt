@@ -1,0 +1,3 @@
+pdfplumber
+pandas
+python-dotenv
