@@ -6,15 +6,21 @@ from shared.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
-COVENANT_ANALYSIS_PROMPT = """Ты анализируешь пункт кредитного договора, задающий финансовый ковенант.
-Не считай числа. Опиши только СОСТАВ метрики.
-Верни JSON:
+COVENANT_ANALYSIS_PROMPT = """You are a financial covenant analyst. Analyze the loan agreement clause and extract the metric composition.
+Do NOT calculate numbers. Only describe what transactions/items are INCLUDED in the metric.
+
+Return ONLY a JSON object (no markdown, no extra text):
 {
-  "numerator_definition": "краткое описание, что входит в числитель/тестируемую сумму, своими словами по тексту пункта",
-  "denominator_definition": "то же для знаменателя, либо null если тест не коэффициентный",
-  "references_audit_adjustment": true/false — упоминается ли корректировка/классификация аудитором,
-  "references_kyc": true/false — упоминаются ли связанные стороны/аффилированные лица
+  "numerator_definition": "Short plain-text description of what expenses/amounts form the numerator or tested sum. Example: 'All capital expenditure payments reclassified by auditor as Capex' or 'Total debt service payments including interest and principal'. Use the actual clause wording.",
+  "denominator_definition": "Description of denominator if ratio-based test, or null if it is an absolute limit test",
+  "references_audit_adjustment": true or false — does the clause mention auditor reclassification or adjustment,
+  "references_kyc": true or false — does the clause mention related parties, affiliates or beneficial owners
 }
+
+Rules:
+- numerator_definition MUST always be a non-empty string describing the category of transactions to aggregate
+- If the clause tests a ratio, fill denominator_definition with the denominator description
+- If the clause tests an absolute amount limit, set denominator_definition to null
 """
 
 
@@ -106,8 +112,14 @@ class CovenantExtractor:
                 ref_audit = any(w in text_lower for w in ["корректировк", "аудит", "переклассифи", "восстановл", "отсечен"])
                 ref_kyc = any(w in text_lower for w in ["связан", "аффилир", "дочерн", "kyc", "бенфициа"])
 
-                # LLM extraction ONLY (No fallback rules)
+                # LLM extraction with raw_clause_text fallback
                 num_def, den_def = self._extract_definitions(raw_clause_text)
+
+                # Ensure numerator_definition is NEVER None — fallback to raw clause text
+                # so the TransactionCategorizer always has something to work with
+                if not num_def or not str(num_def).strip():
+                    num_def = raw_clause_text
+                    logger.warning(f"LLM returned empty numerator_definition for {clause_key}. Using raw clause text as fallback.")
 
                 covenants_map[clause_key] = CovenantClause(
                     clause_number=clause_key,
@@ -137,15 +149,22 @@ class CovenantExtractor:
         return covenants_map
 
     def _extract_definitions(self, clause_text: str) -> tuple:
+        """Extract numerator/denominator definitions via LLM.
+        Returns (numerator_def, denominator_def). May return (None, None) on failure —
+        caller is responsible for applying raw_clause_text fallback.
+        """
         if self.llm_client.is_configured() and clause_text.strip():
             try:
                 res = self.llm_client.completion_json(clause_text, system_prompt=COVENANT_ANALYSIS_PROMPT)
+                # Handle case where model returns a list wrapping the object
                 if isinstance(res, list) and len(res) > 0 and isinstance(res[0], dict):
                     res = res[0]
                 if isinstance(res, dict):
-                    return res.get("numerator_definition"), res.get("denominator_definition")
+                    num_def = res.get("numerator_definition") or res.get("numerator") or res.get("metric_definition")
+                    den_def = res.get("denominator_definition") or res.get("denominator")
+                    return num_def, den_def
             except Exception as e:
                 logger.error(f"LLM covenant definition extraction failed: {e}")
 
-        # Pure LLM mode: NO deterministic fallbacks
+        # Caller will substitute raw_clause_text as fallback
         return None, None

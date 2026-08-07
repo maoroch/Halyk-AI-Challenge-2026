@@ -37,6 +37,8 @@ class LLMClient:
         self.default_model = default_model or OPENROUTER_DEFAULT_MODEL
         self.groq_model = GROQ_PRIMARY_MODEL
         self.disabled = False
+        # Per-model rate-limit cooldown: model_name -> unix timestamp when it becomes available
+        self._groq_cooldown: Dict[str, float] = {}
 
     def is_configured(self) -> bool:
         if self.disabled:
@@ -64,17 +66,25 @@ class LLMClient:
 
         # Priority 1: Groq API Execution (Multi-model failover across 3 active Groq models)
         if self.groq_key and self.groq_key.strip():
-            groq_models_to_try = [self.groq_model, "llama-3.1-8b-instant", "qwen/qwen3.6-27b"]
+            groq_models_to_try = [self.groq_model, "qwen/qwen3.6-27b", "llama-3.1-8b-instant"]
             groq_headers = {
                 "Authorization": f"Bearer {self.groq_key}",
                 "Content-Type": "application/json"
             }
 
             for g_model in groq_models_to_try:
+                # Skip model if still in rate-limit cooldown
+                cooldown_until = self._groq_cooldown.get(g_model, 0)
+                if time.time() < cooldown_until:
+                    remaining = cooldown_until - time.time()
+                    logger.warning(f"Groq ({g_model}) in cooldown for {remaining:.0f}s more. Skipping.")
+                    continue
+
                 groq_payload: Dict[str, Any] = {
                     "model": g_model,
                     "messages": messages,
-                    "temperature": temperature
+                    "temperature": temperature,
+                    "max_tokens": 2048
                 }
                 if response_format and response_format.get("type") == "json_object":
                     sys_content = system_prompt or ""
@@ -90,7 +100,7 @@ class LLMClient:
                 for attempt in range(1, 3):
                     try:
                         logger.info(f"Calling Groq API ({g_model})...")
-                        res = requests.post(GROQ_URL, headers=groq_headers, json=groq_payload, timeout=15)
+                        res = requests.post(GROQ_URL, headers=groq_headers, json=groq_payload, timeout=60)
                         if res.status_code == 200:
                             data = res.json()
                             if isinstance(data, dict) and "choices" in data and len(data["choices"]) > 0:
@@ -99,19 +109,17 @@ class LLMClient:
                                 return content
 
                         if res.status_code == 429:
-                            retry_after = 2.0
+                            retry_after = 5.0
                             try:
                                 hdr = res.headers.get("retry-after")
                                 if hdr:
                                     retry_after = float(hdr)
                             except Exception:
                                 pass
-                            if retry_after > 5.0:
-                                logger.warning(f"Groq API 429 rate limit ({retry_after}s) on {g_model}. Trying next Groq model...")
-                                break
-                            logger.warning(f"Groq API 429 rate limit on {g_model}. Backoff {retry_after}s...")
-                            time.sleep(min(retry_after, 2.0))
-                            continue
+                            # Record cooldown regardless of duration
+                            self._groq_cooldown[g_model] = time.time() + retry_after
+                            logger.warning(f"Groq API 429 on {g_model}. Cooldown set for {retry_after:.0f}s. Trying next model.")
+                            break  # Always move to next model immediately
 
                         if res.status_code == 400 and "response_format" in groq_payload:
                             del groq_payload["response_format"]
@@ -122,8 +130,18 @@ class LLMClient:
                         logger.warning(f"Groq API ({g_model}) attempt failed: {ge}")
 
         # Priority 2: OpenRouter API Fallback Execution
+        # Try multiple free-tier models in order of quality
+        OPENROUTER_FREE_MODELS = [
+            "qwen/qwen3-8b:free",
+            "meta-llama/llama-3.1-8b-instruct:free",
+            "mistralai/mistral-7b-instruct:free",
+            "microsoft/phi-3-mini-128k-instruct:free",
+        ]
         if self.openrouter_key and self.openrouter_key.strip() and self.openrouter_key != "your_openrouter_api_key_here":
-            selected_model = model or self.default_model
+            # Prefer the configured default model first, then free fallbacks
+            models_to_try = [model or self.default_model] + [
+                m for m in OPENROUTER_FREE_MODELS if m != (model or self.default_model)
+            ]
             openrouter_headers = {
                 "Authorization": f"Bearer {self.openrouter_key}",
                 "Content-Type": "application/json",
@@ -131,33 +149,34 @@ class LLMClient:
                 "X-Title": "Halyk AI Challenge Covenant Agent"
             }
 
-            openrouter_payload: Dict[str, Any] = {
-                "model": selected_model,
-                "messages": messages,
-                "temperature": temperature
-            }
-            if response_format:
-                openrouter_payload["response_format"] = response_format
+            for or_model in models_to_try:
+                openrouter_payload: Dict[str, Any] = {
+                    "model": or_model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": 2048
+                }
+                if response_format:
+                    openrouter_payload["response_format"] = response_format
 
-            for attempt in range(1, max_retries + 1):
-                try:
-                    logger.info(f"Calling OpenRouter API ({selected_model})...")
-                    res = requests.post(OPENROUTER_URL, headers=openrouter_headers, json=openrouter_payload, timeout=15)
-                    if res.status_code == 200:
-                        data = res.json()
-                        if isinstance(data, dict) and "choices" in data and len(data["choices"]) > 0:
-                            content = data["choices"][0]["message"]["content"]
-                            logger.info("OpenRouter API LLM call SUCCESS!")
-                            return content
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        logger.info(f"Calling OpenRouter API ({or_model})...")
+                        res = requests.post(OPENROUTER_URL, headers=openrouter_headers, json=openrouter_payload, timeout=60)
+                        if res.status_code == 200:
+                            data = res.json()
+                            if isinstance(data, dict) and "choices" in data and len(data["choices"]) > 0:
+                                content = data["choices"][0]["message"]["content"]
+                                logger.info(f"OpenRouter API ({or_model}) LLM call SUCCESS!")
+                                return content
 
-                    if res.status_code == 429:
-                        logger.warning(f"OpenRouter 429 rate limit. Retrying after 2s...")
-                        time.sleep(2)
-                        continue
+                        if res.status_code == 429:
+                            logger.warning(f"OpenRouter ({or_model}) 429 rate limit. Trying next model...")
+                            break  # Try next model instead of waiting
 
-                    logger.warning(f"OpenRouter attempt {attempt} status {res.status_code}: {res.text[:150]}")
-                except Exception as oe:
-                    logger.warning(f"OpenRouter attempt {attempt} failed: {oe}")
+                        logger.warning(f"OpenRouter ({or_model}) attempt {attempt} status {res.status_code}: {res.text[:150]}")
+                    except Exception as oe:
+                        logger.warning(f"OpenRouter ({or_model}) attempt {attempt} failed: {oe}")
 
         raise RuntimeError("ALL_LLM_PROVIDERS_FAILED")
 
@@ -180,6 +199,13 @@ class LLMClient:
 
     def _parse_json_response(self, raw_text: str) -> Union[Dict[str, Any], list]:
         cleaned = raw_text.strip()
+
+        if "<think>" in cleaned:
+            if "</think>" in cleaned:
+                cleaned = cleaned.split("</think>", 1)[-1].strip()
+            else:
+                raise ValueError(f"Reasoning response truncated before closing </think>: {raw_text[:200]}")
+
         if "```json" in cleaned:
             cleaned = cleaned.split("```json")[1].split("```")[0].strip()
         elif "```" in cleaned:
@@ -205,3 +231,30 @@ class LLMClient:
                     pass
 
             raise ValueError(f"Could not parse valid JSON from LLM output: {raw_text[:200]}")
+
+    def completion_list_json(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.0
+    ) -> list:
+        """Call LLM without json_object format constraint — for prompts expecting a raw JSON array.
+        Falls back to completion_json if the response happens to be a dict with a list value."""
+        raw_text = self.completion(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            temperature=temperature,
+            # No response_format here — avoids json_object wrapper forcing
+        )
+        parsed = self._parse_json_response(raw_text)
+        if isinstance(parsed, list):
+            return parsed
+        if isinstance(parsed, dict):
+            # e.g. {"txn_ids": [...]} — extract the first list value
+            for v in parsed.values():
+                if isinstance(v, list):
+                    return v
+        return []
+

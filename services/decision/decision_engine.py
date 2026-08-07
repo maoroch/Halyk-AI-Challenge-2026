@@ -43,10 +43,8 @@ class DecisionEngine:
 
         status = "COMPLIANT" if is_compliant else "BREACH"
 
-        # Step 4: Bi-directional marginal evidence selection
-        if clause_no in ("6.1", "6.3"):
-            clause.is_marginal_single_txn = True
-
+        # Step 4: Evidence selection — uses CovenantClause.is_marginal_single_txn as set by extractor
+        # Do NOT override is_marginal_single_txn here — it must come from contract text via CovenantClause
         evidence_txn_id = self.evidence_selector.find_evidence_transaction(
             covenant=clause,
             transactions=filtered_txns,

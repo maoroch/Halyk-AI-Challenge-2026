@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 from typing import Dict, List, Optional, Any
 from shared.schemas import CovenantAnswer, DocumentInfo, DocType
@@ -123,6 +124,9 @@ class PipelineRunner:
                 )
 
             all_answers[scenario_id] = scenario_answers
+
+            # Brief throttle between scenarios to reduce Groq rate-limit pressure
+            time.sleep(2)
 
         logger.info("=== STEP 4: Saving Submission, Audit Trail & Executive Dashboard ===")
         submission_dict = self.builder.build_submission(all_answers)

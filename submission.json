@@ -74,12 +74,12 @@
     "P5": {
       "6.1": {
         "status": "BREACH",
-        "actual": 0.0,
+        "actual": 8.98,
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "BREACH",
-        "actual": 0.0,
+        "status": "COMPLIANT",
+        "actual": 48696501.52,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -129,8 +129,8 @@
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "COMPLIANT",
-        "actual": 0.0,
+        "status": "BREACH",
+        "actual": 172932139.21,
         "evidence_txn_id": null
       },
       "6.3": {
@@ -197,8 +197,8 @@
         "evidence_txn_id": null
       },
       "6.2": {
-        "status": "COMPLIANT",
-        "actual": 0.0,
+        "status": "BREACH",
+        "actual": 198583095.63,
         "evidence_txn_id": null
       },
       "6.3": {
