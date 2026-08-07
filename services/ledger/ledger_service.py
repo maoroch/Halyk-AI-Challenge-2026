@@ -27,7 +27,7 @@ class LedgerService:
         self.ledger_csv_path = ledger_csv_path
         self.transactions: List[TransactionRecord] = []
         self.account_to_scenario: Dict[str, str] = {}
-        self.scenario_to_account: Dict[str, str] = dict(TARGET_SCENARIOS)
+        self.scenario_to_account: Dict[str, str] = {}
         self.account_transactions: Dict[str, List[TransactionRecord]] = {}
         self._load_ledger()
 
@@ -41,12 +41,12 @@ class LedgerService:
                 txn_id = row["txn_id"].strip()
                 account_id = row["account_id"].strip()
 
-                # Infer scenario_id from txn_id (e.g. TXN-P1-0039 -> P1)
+                # Dynamically infer scenario_id from txn_id (e.g. TXN-P1-0039 -> P1, TXN-T1-0005 -> T1)
                 parts = txn_id.split("-")
-                if len(parts) >= 3:
-                    scen = parts[1]
-                    if scen in TARGET_SCENARIOS and account_id == TARGET_SCENARIOS[scen]:
-                        self.account_to_scenario[account_id] = scen
+                if len(parts) >= 3 and parts[0].upper() == "TXN":
+                    scen = parts[1].upper()
+                    self.account_to_scenario[account_id] = scen
+                    self.scenario_to_account[scen] = account_id
 
                 raw_amount = row.get("amount", "").strip()
                 try:

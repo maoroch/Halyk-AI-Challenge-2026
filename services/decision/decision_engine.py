@@ -3,6 +3,7 @@ from typing import List, Optional, Tuple
 from shared.schemas import CovenantClause, AuditAdjustment, KYCDossierInfo, TransactionRecord, CovenantAnswer
 from services.evidence.evidence_selector import EvidenceSelector
 from services.categorizer.txn_categorizer import TransactionCategorizer
+from services.currency.currency_service import CurrencyService
 from shared.entity_normalizer import is_entity_match
 
 logger = logging.getLogger(__name__)
@@ -14,9 +15,13 @@ class DecisionEngine:
     Strictly avoids hardcoded company lists, keyword arrays, or literal branching thresholds.
     """
 
-    def __init__(self):
+    def __init__(self, currency_service: Optional[CurrencyService] = None):
         self.evidence_selector = EvidenceSelector()
         self.categorizer = TransactionCategorizer()
+        self.currency_service = currency_service or CurrencyService()
+
+    def _sum_usd(self, txns: List[TransactionRecord]) -> float:
+        return sum(self.currency_service.convert_to_usd(abs(t.amount), t.currency) for t in txns)
 
     def evaluate_covenant(
         self,
@@ -44,7 +49,6 @@ class DecisionEngine:
         status = "COMPLIANT" if is_compliant else "BREACH"
 
         # Step 4: Evidence selection — uses CovenantClause.is_marginal_single_txn as set by extractor
-        # Do NOT override is_marginal_single_txn here — it must come from contract text via CovenantClause
         evidence_txn_id = self.evidence_selector.find_evidence_transaction(
             covenant=clause,
             transactions=filtered_txns,
@@ -84,7 +88,7 @@ class DecisionEngine:
             transactions=transactions,
             metric_type=clause.metric_name
         )
-        return numerator_txns, sum(abs(t.amount) for t in numerator_txns)
+        return numerator_txns, self._sum_usd(numerator_txns)
 
     def _compute_61_actual(
         self,
@@ -100,7 +104,7 @@ class DecisionEngine:
             metric_type=clause.metric_name
         )
 
-        numerator_sum = sum(abs(t.amount) for t in numerator_txns)
+        numerator_sum = self._sum_usd(numerator_txns)
 
         # Apply audit adjustment only if clause explicitly references audit adjustments
         if clause.references_audit_adjustment and audit:
@@ -113,7 +117,7 @@ class DecisionEngine:
                 transactions=transactions,
                 metric_type="RATIO_TEST"
             )
-            denominator_sum = sum(abs(t.amount) for t in denominator_txns)
+            denominator_sum = self._sum_usd(denominator_txns)
 
             if denominator_sum > 0:
                 return numerator_txns, round(numerator_sum / denominator_sum, 2)
@@ -134,7 +138,7 @@ class DecisionEngine:
             metric_type=clause.metric_name
         )
 
-        numerator_sum = sum(abs(t.amount) for t in numerator_txns)
+        numerator_sum = self._sum_usd(numerator_txns)
 
         # Apply capex audit reclassification only if clause explicitly references audit adjustments
         if clause.references_audit_adjustment and audit:
@@ -147,7 +151,7 @@ class DecisionEngine:
                 transactions=transactions,
                 metric_type="RATIO_TEST"
             )
-            denominator_sum = sum(abs(t.amount) for t in denominator_txns)
+            denominator_sum = self._sum_usd(denominator_txns)
 
             if denominator_sum > 0:
                 return numerator_txns, round(numerator_sum / denominator_sum, 2)
@@ -173,9 +177,17 @@ class DecisionEngine:
                         break
 
         if related_txns:
-            return related_txns, sum(abs(t.amount) for t in related_txns)
+            return related_txns, self._sum_usd(related_txns)
 
-        # Return 0.0 if no related party transaction occurs (no magic numbers)
+        # Fallback to categorizer for clause 6.3 if KYC dossier doesn't yield entity match
+        cat_txns = self.categorizer.categorize(
+            definition=clause.numerator_definition,
+            transactions=transactions,
+            metric_type="RELATED_PARTY_LIMIT"
+        )
+        if cat_txns:
+            return cat_txns, self._sum_usd(cat_txns)
+
         return [], 0.0
 
     def _evaluate_condition(self, val: float, threshold: float, operator: str) -> bool:

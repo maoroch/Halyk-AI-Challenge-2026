@@ -1,6 +1,6 @@
 import re
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 from shared.schemas import DocumentInfo, CovenantClause, CovenantExtractionResult
 from shared.llm_client import LLMClient
 
@@ -43,21 +43,17 @@ class CovenantExtractor:
         )
 
     def _extract_covenant_body(self, text: str) -> str:
-        match_body = re.search(r"(?:Статья 6 —|Пункт 6\.1)[\s\S]{1,5000}(?=(?:Статья 7|\Z))", text)
+        match_body = re.search(r"(?:Статья 6|Article 6|6\.1)[\s\S]{1,6000}(?=(?:Статья 7|Article 7|\Z))", text, re.IGNORECASE)
         if match_body:
             return match_body.group(0)
-
-        match_clauses = re.search(r"6\.1[\s\S]{1,4000}", text)
-        if match_clauses:
-            return match_clauses.group(0)
-
-        return text[:4000]
+        return text[:6000]
 
     def _extract_covenants_from_text(self, snippet: str, account_id: str, company_name: str) -> Dict[str, CovenantClause]:
         covenants_map = {}
 
         for clause_key in ["6.1", "6.2", "6.3"]:
-            pattern = rf"Пункт {clause_key}[\s\S]{{1,1200}}(?=(?:Пункт 6\.[123]|Статья 7|\Z))"
+            escaped_key = re.escape(clause_key)
+            pattern = rf"(?:Пункт|Clause|Section|^|\n)\s*{escaped_key}[\s\.\s][\s\S]{{1,1500}}(?=(?:(?:Пункт|Clause|Section|\n)\s*6\.[123]|Статья|Article|\Z))"
             match = re.search(pattern, snippet, re.IGNORECASE)
 
             if match:
@@ -65,30 +61,26 @@ class CovenantExtractor:
 
                 # Extract threshold number
                 threshold = 0.0
+                ratio_match = re.search(r"(\d+\.\d+)x", raw_clause_text, re.IGNORECASE)
+                amount_match = re.search(r"\$\s*([\d,]+(?:\.\d+)?)", raw_clause_text)
+
                 if clause_key == "6.1":
-                    ratio_match = re.search(r"(\d+\.\d+)x", raw_clause_text, re.IGNORECASE)
                     if ratio_match:
                         threshold = float(ratio_match.group(1))
-                    else:
-                        amount_match = re.search(r"\$\s*([\d,]+(?:\.\d+)?)", raw_clause_text)
-                        if amount_match:
-                            threshold = float(amount_match.group(1).replace(",", ""))
+                    elif amount_match:
+                        threshold = float(amount_match.group(1).replace(",", ""))
                 else:
-                    # Clause 6.2 and 6.3 thresholds are dollar limits
-                    amount_match = re.search(r"\$\s*([\d,]+(?:\.\d+)?)", raw_clause_text)
                     if amount_match:
                         threshold = float(amount_match.group(1).replace(",", ""))
-                    else:
-                        ratio_match = re.search(r"(\d+\.\d+)x", raw_clause_text, re.IGNORECASE)
-                        if ratio_match:
-                            threshold = float(ratio_match.group(1))
+                    elif ratio_match:
+                        threshold = float(ratio_match.group(1))
 
                 # Extract operator
                 operator = "<="
                 text_lower = raw_clause_text.lower()
-                if "не менее" in text_lower or "поддерживать" in text_lower or "обеспечить" in text_lower:
+                if "не менее" in text_lower or "поддерживать" in text_lower or "обеспечить" in text_lower or "at least" in text_lower or "minimum" in text_lower:
                     operator = ">="
-                elif "не превышал" in text_lower or "не допускать" in text_lower or "не превышала" in text_lower:
+                elif "не превышал" in text_lower or "не допускать" in text_lower or "не превышала" in text_lower or "not exceed" in text_lower or "maximum" in text_lower:
                     operator = "<="
 
                 # Determine metric category
@@ -115,8 +107,6 @@ class CovenantExtractor:
                 # LLM extraction with raw_clause_text fallback
                 num_def, den_def = self._extract_definitions(raw_clause_text)
 
-                # Ensure numerator_definition is NEVER None — fallback to raw clause text
-                # so the TransactionCategorizer always has something to work with
                 if not num_def or not str(num_def).strip():
                     num_def = raw_clause_text
                     logger.warning(f"LLM returned empty numerator_definition for {clause_key}. Using raw clause text as fallback.")
@@ -148,23 +138,35 @@ class CovenantExtractor:
 
         return covenants_map
 
+    def _parse_ratio_formula(self, text: str) -> Tuple[Optional[str], Optional[str]]:
+        text_clean = text.replace('\n', ' ')
+        m = re.search(r'отношение\s+(.*?)\s+к\s+(.*?)(?=\s+(?:не превышало|не превышает|не превышал|составляло|составлял|составлять|величина|быть|равно|превышал|\b\d+\.\d+x|\.|$))', text_clean, re.IGNORECASE)
+        if m:
+            return m.group(1).strip(), m.group(2).strip()
+        m2 = re.search(r'(.*?)\s+не превышал[ао]?\s+\d+\.\d+x\s+(.*?)(?=\s+(?:за|для|\.|$))', text_clean, re.IGNORECASE)
+        if m2:
+            return m2.group(1).strip(), m2.group(2).strip()
+        m3 = re.search(r'доля\s+(.*?)\s+в\s+(.*?)(?=\s+(?:не превышала|не превышает|составляла|\b\d+\.\d+x|\.|$))', text_clean, re.IGNORECASE)
+        if m3:
+            return m3.group(1).strip(), m3.group(2).strip()
+        return text_clean, None
+
     def _extract_definitions(self, clause_text: str) -> tuple:
-        """Extract numerator/denominator definitions via LLM.
-        Returns (numerator_def, denominator_def). May return (None, None) on failure —
-        caller is responsible for applying raw_clause_text fallback.
+        """Extract numerator/denominator definitions via LLM with deterministic regex fallback.
+        Returns (numerator_def, denominator_def).
         """
         if self.llm_client.is_configured() and clause_text.strip():
             try:
                 res = self.llm_client.completion_json(clause_text, system_prompt=COVENANT_ANALYSIS_PROMPT)
-                # Handle case where model returns a list wrapping the object
                 if isinstance(res, list) and len(res) > 0 and isinstance(res[0], dict):
                     res = res[0]
                 if isinstance(res, dict):
                     num_def = res.get("numerator_definition") or res.get("numerator") or res.get("metric_definition")
                     den_def = res.get("denominator_definition") or res.get("denominator")
-                    return num_def, den_def
+                    if num_def:
+                        return num_def, den_def
             except Exception as e:
                 logger.error(f"LLM covenant definition extraction failed: {e}")
 
-        # Caller will substitute raw_clause_text as fallback
-        return None, None
+        # Deterministic regex fallback
+        return self._parse_ratio_formula(clause_text)

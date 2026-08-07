@@ -23,10 +23,11 @@ class EvidenceSelector:
         threshold: float,
         operator: str = "<="
     ) -> Optional[str]:
-        if not covenant.is_marginal_single_txn:
+        if not transactions:
             return None
 
-        if not transactions:
+        # Always perform marginal sensitivity check if status is BREACH or clause is marked as marginal single txn
+        if current_status != "BREACH" and not covenant.is_marginal_single_txn:
             return None
 
         target_status = "COMPLIANT" if current_status == "BREACH" else "BREACH"

@@ -84,16 +84,16 @@ class LLMClient:
                     "model": g_model,
                     "messages": messages,
                     "temperature": temperature,
-                    "max_tokens": 2048
+                    "max_tokens": 4096
                 }
                 if response_format and response_format.get("type") == "json_object":
                     sys_content = system_prompt or ""
                     if "json" not in sys_content.lower() and "json" not in prompt.lower():
                         messages_copy = list(messages)
                         if messages_copy and messages_copy[0]["role"] == "system":
-                            messages_copy[0] = {"role": "system", "content": messages_copy[0]["content"] + "\nReturn valid JSON."}
+                            messages_copy[0] = {"role": "system", "content": messages_copy[0]["content"] + "\nReturn valid JSON. Do NOT include <think> reasoning tags."}
                         else:
-                            messages_copy.insert(0, {"role": "system", "content": "Return valid JSON."})
+                            messages_copy.insert(0, {"role": "system", "content": "Return valid JSON. Do NOT include <think> reasoning tags."})
                         groq_payload["messages"] = messages_copy
                     groq_payload["response_format"] = response_format
 
@@ -132,10 +132,11 @@ class LLMClient:
         # Priority 2: OpenRouter API Fallback Execution
         # Try multiple free-tier models in order of quality
         OPENROUTER_FREE_MODELS = [
-            "qwen/qwen3-8b:free",
-            "meta-llama/llama-3.1-8b-instruct:free",
-            "mistralai/mistral-7b-instruct:free",
-            "microsoft/phi-3-mini-128k-instruct:free",
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "qwen/qwen-2.5-72b-instruct:free",
+            "google/gemini-2.0-flash-exp:free",
+            "mistralai/mistral-small-24b-instruct-2501:free",
+            "deepseek/deepseek-r1:free",
         ]
         if self.openrouter_key and self.openrouter_key.strip() and self.openrouter_key != "your_openrouter_api_key_here":
             # Prefer the configured default model first, then free fallbacks
@@ -154,7 +155,7 @@ class LLMClient:
                     "model": or_model,
                     "messages": messages,
                     "temperature": temperature,
-                    "max_tokens": 2048
+                    "max_tokens": 4096
                 }
                 if response_format:
                     openrouter_payload["response_format"] = response_format
@@ -204,7 +205,41 @@ class LLMClient:
             if "</think>" in cleaned:
                 cleaned = cleaned.split("</think>", 1)[-1].strip()
             else:
-                raise ValueError(f"Reasoning response truncated before closing </think>: {raw_text[:200]}")
+                # Truncated think tag: strip from <think> to where JSON starts ({ or [)
+                start_dict = cleaned.find("{")
+                start_arr = cleaned.find("[")
+                if start_dict != -1 and (start_arr == -1 or start_dict < start_arr):
+                    cleaned = cleaned[start_dict:]
+                elif start_arr != -1:
+                    cleaned = cleaned[start_arr:]
+                else:
+                    cleaned = cleaned.split("<think>", 1)[0].strip()
+
+        if "```json" in cleaned:
+            cleaned = cleaned.split("```json")[1].split("```")[0].strip()
+        elif "```" in cleaned:
+            cleaned = cleaned.split("```")[1].split("```")[0].strip()
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            start_dict = cleaned.find("{")
+            end_dict = cleaned.rfind("}")
+            if start_dict != -1 and end_dict != -1 and end_dict > start_dict:
+                try:
+                    return json.loads(cleaned[start_dict:end_dict + 1])
+                except json.JSONDecodeError:
+                    pass
+
+            start_arr = cleaned.find("[")
+            end_arr = cleaned.rfind("]")
+            if start_arr != -1 and end_arr != -1 and end_arr > start_arr:
+                try:
+                    return json.loads(cleaned[start_arr:end_arr + 1])
+                except json.JSONDecodeError:
+                    pass
+
+            raise ValueError(f"Could not parse valid JSON from LLM output: {raw_text[:200]}")
 
         if "```json" in cleaned:
             cleaned = cleaned.split("```json")[1].split("```")[0].strip()

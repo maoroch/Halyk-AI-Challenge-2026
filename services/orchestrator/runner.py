@@ -1,11 +1,12 @@
 import os
 import time
 import logging
+import json
 from typing import Dict, List, Optional, Any
 from shared.schemas import CovenantAnswer, DocumentInfo, DocType
 from shared.llm_client import LLMClient
 from services.ingestion.ingestor import DocumentIngestor
-from services.classifier.doc_classifier import DocumentClassifier, TARGET_ACCOUNTS
+from services.classifier.doc_classifier import DocumentClassifier
 from services.extractors.covenant_extractor import CovenantExtractor
 from services.extractors.adjustment_extractor import AdjustmentExtractor
 from services.ledger.ledger_service import LedgerService
@@ -43,7 +44,7 @@ class PipelineRunner:
         self.adj_extractor = AdjustmentExtractor(self.llm_client)
         self.ledger_service = LedgerService(self.ledger_path)
         self.currency_service = CurrencyService()
-        self.decision_engine = DecisionEngine()
+        self.decision_engine = DecisionEngine(currency_service=self.currency_service)
         self.builder = ResponseBuilder(self.template_path)
         self.audit_service = AuditTrailService(output_json_path=self.audit_trail_path)
         self.dashboard_gen = DashboardGenerator(output_path=self.dashboard_path)
@@ -69,7 +70,17 @@ class PipelineRunner:
         logger.info("=== STEP 3: Evaluating Covenants & Building Compliance Audit Trail ===")
         all_answers: Dict[str, Dict[str, CovenantAnswer]] = {}
 
-        for scenario_id, target_account_id in TARGET_ACCOUNTS.items():
+        # Dynamically load scenario IDs from submission_template.json
+        template_answers = {}
+        if os.path.exists(self.template_path):
+            with open(self.template_path, "r", encoding="utf-8") as tf:
+                tpl_data = json.load(tf)
+                template_answers = tpl_data.get("answers", {})
+
+        scenario_ids = list(template_answers.keys()) if template_answers else sorted(list(self.ledger_service.scenario_to_account.keys()))
+
+        for scenario_id in scenario_ids:
+            target_account_id = self.ledger_service.scenario_to_account.get(scenario_id, f"ACC-{scenario_id}")
             logger.info(f"Processing Scenario {scenario_id} (Account: {target_account_id})...")
 
             account_docs = docs_by_account.get(target_account_id, {})
@@ -88,6 +99,10 @@ class PipelineRunner:
             audit_docs = account_docs.get(DocType.AUDIT_NOTE, [])
             active_audit_doc = self._select_active_document(audit_docs)
             audit_adj = self.adj_extractor.extract_audit_adjustments(active_audit_doc) if active_audit_doc else None
+
+            # Extract dynamic FX rates from borrower's Audit Note text if available
+            if active_audit_doc and active_audit_doc.raw_text:
+                self.currency_service.extract_fx_rates_from_text(active_audit_doc.raw_text)
 
             # Get KYC Dossier
             kyc_docs = account_docs.get(DocType.KYC_DOSSIER, [])
@@ -150,8 +165,28 @@ class PipelineRunner:
     def _select_active_document(self, docs: List[DocumentInfo]) -> Optional[DocumentInfo]:
         if not docs:
             return None
+
+        # Filter strictly for active 2025 loan contracts
+        active_agreements = []
         for d in docs:
-            text = d.raw_text or ""
-            if "НЕДЕЙСТВУЮЩАЯ РЕДАКЦИЯ" not in text and "НЕ ПРИМЕНЯЕТСЯ" not in text:
+            text_lower = (d.raw_text or "").lower()
+            if "договор банковского займа" in text_lower or "договор займа" in text_lower or "кредитный договор" in text_lower:
+                if "недействующая" not in text_lower and "не применяется" not in text_lower and "старая редакция" not in text_lower:
+                    active_agreements.append(d)
+
+        if not active_agreements:
+            active_agreements = [
+                d for d in docs
+                if "недействующая" not in (d.raw_text or "").lower()
+                and "не применяется" not in (d.raw_text or "").lower()
+            ]
+
+        if not active_agreements:
+            active_agreements = docs
+
+        # Prefer candidate referencing the 2025 fiscal year / period
+        for d in active_agreements:
+            if "2025" in (d.raw_text or "") or "2025-01-01" in (d.raw_text or ""):
                 return d
-        return docs[0]
+
+        return active_agreements[0]

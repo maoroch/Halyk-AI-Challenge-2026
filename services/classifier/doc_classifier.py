@@ -67,7 +67,7 @@ class DocumentClassifier:
 
         logger.info(
             f"Classified {len(classified)} documents. "
-            f"Relevant with target account_id: {sum(1 for d in classified if d.account_id in TARGET_ACCOUNTS.values())}"
+            f"Relevant with identified account_id: {sum(1 for d in classified if d.account_id is not None)}"
         )
         return classified
 
@@ -81,15 +81,23 @@ class DocumentClassifier:
         return None
 
     def _classify_doc_type(self, text: str) -> DocType:
+        header_text = text[:1500].lower()
         text_lower = text.lower()
 
-        # Keywords for Credit Agreement (Loan Agreement)
-        loan_keywords = ["кредитный договор", "кредитное соглашение", "статья 6", "ковенант", "ссудный счет", "заемщик", "займодавец"]
-        # Keywords for Audit Note / Financial Statement
-        audit_keywords = ["аудиторское заключение", "аудиторская записка", "промежуточная ведомость", "корректировка ebitda", "add-back", "capex", "выручка"]
-        # Keywords for KYC / Related Parties
-        kyc_keywords = ["kyc", "aml", "связанные стороны", "аффилированные лица", "бенефициарный владелец", "досье контрагента"]
-        # Keywords for Decoy documents
+        # Check explicit document headers first
+        if "договор банковского займа" in header_text or "договор займа" in header_text:
+            return DocType.LOAN_AGREEMENT
+
+        if "аудитор" in header_text or "примечания к финансовой отчётности" in header_text or "аудиторское заключение" in header_text or "независимый аудитор" in header_text:
+            return DocType.AUDIT_NOTE
+
+        if "досье контрагента" in header_text or "проверка контрагента" in header_text or "kyc" in header_text or "аффилированным лицам" in header_text:
+            return DocType.KYC_DOSSIER
+
+        # Secondary fallback by body keywords
+        loan_keywords = ["договор банковского займа", "ссудный счет", "кредитный договор"]
+        audit_keywords = ["аудиторское заключение", "аудиторская записка", "промежуточная ведомость", "примечания к финансовой отчётности", "add-back ebitda"]
+        kyc_keywords = ["досье контрагента", "бенефициарный владелец", "список аффилированных лиц", "политика связанных сторон"]
         decoy_keywords = ["hr-политика", "бренд-гайд", "it-инцидент", "страховой полис", "пожарная безопасность", "server log"]
 
         loan_score = sum(1 for kw in loan_keywords if kw in text_lower)
