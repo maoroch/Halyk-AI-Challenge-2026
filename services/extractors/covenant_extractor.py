@@ -24,9 +24,12 @@ Rules:
 """
 
 
+from services.retrieval.bm25_retriever import BM25Retriever
+
 class CovenantExtractor:
     def __init__(self, llm_client: Optional[LLMClient] = None):
         self.llm_client = llm_client or LLMClient()
+        self.bm25 = BM25Retriever()
 
     def extract_covenants(self, doc: DocumentInfo) -> CovenantExtractionResult:
         text = doc.raw_text or ""
@@ -46,7 +49,10 @@ class CovenantExtractor:
         match_body = re.search(r"(?:Статья 6|Article 6|6\.1)[\s\S]{1,6000}(?=(?:Статья 7|Article 7|\Z))", text, re.IGNORECASE)
         if match_body:
             return match_body.group(0)
-        return text[:6000]
+        
+        # Fallback to BM25 top snippets for covenant keywords
+        bm25_query = "ковенант финансовый ковенант 6.1 6.2 6.3 капитальные затраты capex лимит отношение доля долг"
+        return self.bm25.get_top_snippets(text, query=bm25_query, top_k=3, max_tokens_approx=1500)
 
     def _extract_covenants_from_text(self, snippet: str, account_id: str, company_name: str) -> Dict[str, CovenantClause]:
         covenants_map = {}

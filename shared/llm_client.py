@@ -10,42 +10,35 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_PRIMARY_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+# Configurable Local LLM settings from environment variables (.env)
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1/chat/completions")
+LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", os.getenv("OLLAMA_MODEL", "qwen2.5:7b"))
+LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "120"))
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 
 
 class LLMClient:
     """
-    Unified production-grade LLM client with multi-provider failover.
-    Supports Groq API (Primary) and OpenRouter API (Secondary) with rate-limit handling,
-    structured JSON parsing, and automatic fallback.
+    Production-grade LLM client connected exclusively to the local LLM endpoint (Ollama / vLLM / Local Docker).
+    No cloud fallbacks. Fully configurable via environment variables (.env).
     """
 
     def __init__(
         self,
-        openrouter_key: Optional[str] = None,
-        groq_key: Optional[str] = None,
-        default_model: Optional[str] = None
+        base_url: Optional[str] = None,
+        model_name: Optional[str] = None,
+        timeout: Optional[int] = None
     ):
-        self.openrouter_key = openrouter_key or OPENROUTER_API_KEY
-        self.groq_key = groq_key or GROQ_API_KEY
-        self.default_model = default_model or OPENROUTER_DEFAULT_MODEL
-        self.groq_model = GROQ_PRIMARY_MODEL
+        self.base_url = base_url or LLM_BASE_URL
+        self.model_name = model_name or LLM_MODEL_NAME
+        self.timeout = timeout or LLM_TIMEOUT
+        self.api_key = LLM_API_KEY
         self.disabled = False
-        # Per-model rate-limit cooldown: model_name -> unix timestamp when it becomes available
-        self._groq_cooldown: Dict[str, float] = {}
 
     def is_configured(self) -> bool:
         if self.disabled:
             return False
-        has_openrouter = bool(self.openrouter_key and self.openrouter_key.strip() and self.openrouter_key != "your_openrouter_api_key_here")
-        has_groq = bool(self.groq_key and self.groq_key.strip())
-        return has_openrouter or has_groq
+        return bool(self.base_url and self.base_url.strip())
 
     def completion(
         self,
@@ -57,129 +50,56 @@ class LLMClient:
         max_retries: int = 3
     ) -> str:
         if not self.is_configured():
-            raise ValueError("No valid LLM API key configured.")
+            raise ValueError("LLMClient is disabled or base_url is unconfigured.")
 
+        target_model = model or self.model_name
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        # Priority 1: Groq API Execution (Multi-model failover across 3 active Groq models)
-        if self.groq_key and self.groq_key.strip():
-            groq_models_to_try = [self.groq_model, "qwen/qwen3.6-27b", "llama-3.1-8b-instant"]
-            groq_headers = {
-                "Authorization": f"Bearer {self.groq_key}",
-                "Content-Type": "application/json"
-            }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key and self.api_key.strip():
+            headers["Authorization"] = f"Bearer {self.api_key}"
 
-            for g_model in groq_models_to_try:
-                # Skip model if still in rate-limit cooldown
-                cooldown_until = self._groq_cooldown.get(g_model, 0)
-                if time.time() < cooldown_until:
-                    remaining = cooldown_until - time.time()
-                    logger.warning(f"Groq ({g_model}) in cooldown for {remaining:.0f}s more. Skipping.")
+        payload: Dict[str, Any] = {
+            "model": target_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": 4096
+        }
+
+        if response_format and response_format.get("type") == "json_object":
+            payload["response_format"] = response_format
+
+        last_error = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(f"Calling Local LLM ({target_model} @ {self.base_url}) [Attempt {attempt}/{max_retries}]...")
+                res = requests.post(self.base_url, headers=headers, json=payload, timeout=self.timeout)
+                
+                if res.status_code == 200:
+                    data = res.json()
+                    if isinstance(data, dict) and "choices" in data and len(data["choices"]) > 0:
+                        content = data["choices"][0]["message"]["content"]
+                        logger.info(f"Local LLM call SUCCESS!")
+                        return content
+                
+                # If response_format json_object is unsupported by local endpoint, retry without it
+                if res.status_code == 400 and "response_format" in payload:
+                    logger.warning(f"Local LLM 400 on response_format, retrying without response_format...")
+                    del payload["response_format"]
                     continue
 
-                groq_payload: Dict[str, Any] = {
-                    "model": g_model,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "max_tokens": 4096
-                }
-                if response_format and response_format.get("type") == "json_object":
-                    sys_content = system_prompt or ""
-                    if "json" not in sys_content.lower() and "json" not in prompt.lower():
-                        messages_copy = list(messages)
-                        if messages_copy and messages_copy[0]["role"] == "system":
-                            messages_copy[0] = {"role": "system", "content": messages_copy[0]["content"] + "\nReturn valid JSON. Do NOT include <think> reasoning tags."}
-                        else:
-                            messages_copy.insert(0, {"role": "system", "content": "Return valid JSON. Do NOT include <think> reasoning tags."})
-                        groq_payload["messages"] = messages_copy
-                    groq_payload["response_format"] = response_format
+                last_error = f"HTTP Status {res.status_code}: {res.text[:200]}"
+                logger.warning(f"Local LLM attempt {attempt} failed: {last_error}")
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Local LLM attempt {attempt} connection exception: {e}")
 
-                for attempt in range(1, 3):
-                    try:
-                        logger.info(f"Calling Groq API ({g_model})...")
-                        res = requests.post(GROQ_URL, headers=groq_headers, json=groq_payload, timeout=60)
-                        if res.status_code == 200:
-                            data = res.json()
-                            if isinstance(data, dict) and "choices" in data and len(data["choices"]) > 0:
-                                content = data["choices"][0]["message"]["content"]
-                                logger.info(f"Groq API ({g_model}) LLM call SUCCESS!")
-                                return content
+            time.sleep(1.0)
 
-                        if res.status_code == 429:
-                            retry_after = 5.0
-                            try:
-                                hdr = res.headers.get("retry-after")
-                                if hdr:
-                                    retry_after = float(hdr)
-                            except Exception:
-                                pass
-                            # Record cooldown regardless of duration
-                            self._groq_cooldown[g_model] = time.time() + retry_after
-                            logger.warning(f"Groq API 429 on {g_model}. Cooldown set for {retry_after:.0f}s. Trying next model.")
-                            break  # Always move to next model immediately
-
-                        if res.status_code == 400 and "response_format" in groq_payload:
-                            del groq_payload["response_format"]
-                            continue
-
-                        logger.warning(f"Groq API ({g_model}) status {res.status_code}: {res.text[:150]}")
-                    except Exception as ge:
-                        logger.warning(f"Groq API ({g_model}) attempt failed: {ge}")
-
-        # Priority 2: OpenRouter API Fallback Execution
-        # Try multiple free-tier models in order of quality
-        OPENROUTER_FREE_MODELS = [
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "qwen/qwen-2.5-72b-instruct:free",
-            "google/gemini-2.0-flash-exp:free",
-            "mistralai/mistral-small-24b-instruct-2501:free",
-            "deepseek/deepseek-r1:free",
-        ]
-        if self.openrouter_key and self.openrouter_key.strip() and self.openrouter_key != "your_openrouter_api_key_here":
-            # Prefer the configured default model first, then free fallbacks
-            models_to_try = [model or self.default_model] + [
-                m for m in OPENROUTER_FREE_MODELS if m != (model or self.default_model)
-            ]
-            openrouter_headers = {
-                "Authorization": f"Bearer {self.openrouter_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/Halyk-AI-Challenge-2026",
-                "X-Title": "Halyk AI Challenge Covenant Agent"
-            }
-
-            for or_model in models_to_try:
-                openrouter_payload: Dict[str, Any] = {
-                    "model": or_model,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "max_tokens": 4096
-                }
-                if response_format:
-                    openrouter_payload["response_format"] = response_format
-
-                for attempt in range(1, max_retries + 1):
-                    try:
-                        logger.info(f"Calling OpenRouter API ({or_model})...")
-                        res = requests.post(OPENROUTER_URL, headers=openrouter_headers, json=openrouter_payload, timeout=60)
-                        if res.status_code == 200:
-                            data = res.json()
-                            if isinstance(data, dict) and "choices" in data and len(data["choices"]) > 0:
-                                content = data["choices"][0]["message"]["content"]
-                                logger.info(f"OpenRouter API ({or_model}) LLM call SUCCESS!")
-                                return content
-
-                        if res.status_code == 429:
-                            logger.warning(f"OpenRouter ({or_model}) 429 rate limit. Trying next model...")
-                            break  # Try next model instead of waiting
-
-                        logger.warning(f"OpenRouter ({or_model}) attempt {attempt} status {res.status_code}: {res.text[:150]}")
-                    except Exception as oe:
-                        logger.warning(f"OpenRouter ({or_model}) attempt {attempt} failed: {oe}")
-
-        raise RuntimeError("ALL_LLM_PROVIDERS_FAILED")
+        raise RuntimeError(f"Local LLM execution failed after {max_retries} attempts: {last_error}")
 
     def completion_json(
         self,
@@ -187,109 +107,60 @@ class LLMClient:
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.0
-    ) -> Union[Dict[str, Any], list]:
-        fmt = {"type": "json_object"}
+    ) -> Dict[str, Any]:
+        """
+        Guarantees structured JSON dictionary output from local LLM.
+        Strips <think> reasoning tags and markdown code blocks.
+        """
+        full_sys_prompt = (
+            (system_prompt or "") +
+            "\nOutput ONLY valid JSON. Do not include markdown code block backticks (like ```json), commentary, or reasoning tags."
+        ).strip()
+
         raw_text = self.completion(
             prompt=prompt,
-            system_prompt=system_prompt,
+            system_prompt=full_sys_prompt,
             model=model,
             temperature=temperature,
-            response_format=fmt
+            response_format={"type": "json_object"}
         )
-        return self._parse_json_response(raw_text)
 
-    def _parse_json_response(self, raw_text: str) -> Union[Dict[str, Any], list]:
-        cleaned = raw_text.strip()
+        # Strip reasoning tags (e.g. <think>...</think> from DeepSeek R1 models)
+        clean_text = re_strip_think(raw_text)
 
-        if "<think>" in cleaned:
-            if "</think>" in cleaned:
-                cleaned = cleaned.split("</think>", 1)[-1].strip()
+        # Strip markdown ```json ``` markers
+        if "```" in clean_text:
+            match = re_search_codeblock(clean_text)
+            if match:
+                clean_text = match
             else:
-                # Truncated think tag: strip from <think> to where JSON starts ({ or [)
-                start_dict = cleaned.find("{")
-                start_arr = cleaned.find("[")
-                if start_dict != -1 and (start_arr == -1 or start_dict < start_arr):
-                    cleaned = cleaned[start_dict:]
-                elif start_arr != -1:
-                    cleaned = cleaned[start_arr:]
-                else:
-                    cleaned = cleaned.split("<think>", 1)[0].strip()
+                clean_text = clean_text.replace("```json", "").replace("```", "").strip()
 
-        if "```json" in cleaned:
-            cleaned = cleaned.split("```json")[1].split("```")[0].strip()
-        elif "```" in cleaned:
-            cleaned = cleaned.split("```")[1].split("```")[0].strip()
-
+        # Parse JSON
         try:
-            return json.loads(cleaned)
+            return json.loads(clean_text)
         except json.JSONDecodeError:
-            start_dict = cleaned.find("{")
-            end_dict = cleaned.rfind("}")
-            if start_dict != -1 and end_dict != -1 and end_dict > start_dict:
+            # Fallback regex search for JSON object inside braces
+            brace_match = re_search_braces(clean_text)
+            if brace_match:
                 try:
-                    return json.loads(cleaned[start_dict:end_dict + 1])
+                    return json.loads(brace_match)
                 except json.JSONDecodeError:
                     pass
+            logger.error(f"Failed to parse JSON from Local LLM response: {raw_text[:300]}")
+            raise ValueError(f"Local LLM response is not valid JSON: {clean_text[:200]}")
 
-            start_arr = cleaned.find("[")
-            end_arr = cleaned.rfind("]")
-            if start_arr != -1 and end_arr != -1 and end_arr > start_arr:
-                try:
-                    return json.loads(cleaned[start_arr:end_arr + 1])
-                except json.JSONDecodeError:
-                    pass
 
-            raise ValueError(f"Could not parse valid JSON from LLM output: {raw_text[:200]}")
+def re_strip_think(text: str) -> str:
+    import re
+    return re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
 
-        if "```json" in cleaned:
-            cleaned = cleaned.split("```json")[1].split("```")[0].strip()
-        elif "```" in cleaned:
-            cleaned = cleaned.split("```")[1].split("```")[0].strip()
+def re_search_codeblock(text: str) -> Optional[str]:
+    import re
+    m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    return m.group(1).strip() if m else None
 
-        try:
-            return json.loads(cleaned)
-        except json.JSONDecodeError:
-            start_dict = cleaned.find("{")
-            end_dict = cleaned.rfind("}")
-            if start_dict != -1 and end_dict != -1 and end_dict > start_dict:
-                try:
-                    return json.loads(cleaned[start_dict:end_dict + 1])
-                except json.JSONDecodeError:
-                    pass
-
-            start_arr = cleaned.find("[")
-            end_arr = cleaned.rfind("]")
-            if start_arr != -1 and end_arr != -1 and end_arr > start_arr:
-                try:
-                    return json.loads(cleaned[start_arr:end_arr + 1])
-                except json.JSONDecodeError:
-                    pass
-
-            raise ValueError(f"Could not parse valid JSON from LLM output: {raw_text[:200]}")
-
-    def completion_list_json(
-        self,
-        prompt: str,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        temperature: float = 0.0
-    ) -> list:
-        """Call LLM without json_object format constraint — for prompts expecting a raw JSON array.
-        Falls back to completion_json if the response happens to be a dict with a list value."""
-        raw_text = self.completion(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            temperature=temperature,
-            # No response_format here — avoids json_object wrapper forcing
-        )
-        parsed = self._parse_json_response(raw_text)
-        if isinstance(parsed, list):
-            return parsed
-        if isinstance(parsed, dict):
-            # e.g. {"txn_ids": [...]} — extract the first list value
-            for v in parsed.values():
-                if isinstance(v, list):
-                    return v
-        return []
-
+def re_search_braces(text: str) -> Optional[str]:
+    import re
+    m = re.search(r"\{[\s\S]*\}", text)
+    return m.group(0).strip() if m else None

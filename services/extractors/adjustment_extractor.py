@@ -38,9 +38,12 @@ Return JSON:
 """
 
 
+from services.retrieval.bm25_retriever import BM25Retriever
+
 class AdjustmentExtractor:
     def __init__(self, llm_client: Optional[LLMClient] = None):
         self.llm_client = llm_client or LLMClient()
+        self.bm25 = BM25Retriever()
 
     def extract_audit_adjustments(self, doc: DocumentInfo) -> AuditAdjustment:
         account_id = doc.account_id or "UNKNOWN"
@@ -48,8 +51,12 @@ class AdjustmentExtractor:
         text = doc.raw_text or ""
 
         if self.llm_client.is_configured() and text.strip():
+            # Use BM25 to extract relevant audit adjustment sections and cut prompt token consumption
+            bm25_query = "аудиторская записка реклассификация capex add-back ebitda исключение транзакций TXN переквалификация"
+            compact_text = self.bm25.get_top_snippets(text, query=bm25_query, top_k=3, max_tokens_approx=1500)
+            
             try:
-                prompt = f"Account ID: {account_id}\nText:\n{text[:4000]}"
+                prompt = f"Account ID: {account_id}\nCompany: {company_name}\nAudit Note Text:\n{compact_text}"
                 res = self.llm_client.completion_json(prompt, system_prompt=AUDIT_SYSTEM_PROMPT)
 
                 return AuditAdjustment(

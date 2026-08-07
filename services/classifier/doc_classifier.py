@@ -55,8 +55,8 @@ class DocumentClassifier:
             doc_type = self._classify_doc_type(text)
             doc.doc_type = doc_type
 
-            # If account_id not found via regex, but document is relevant, check via LLM if configured
-            if not account_id and doc_type != DocType.DECOY and self.llm_client.is_configured():
+            # Only check LLM for account_id if document is a core financial doc (Loan Agreement or Audit Note)
+            if not account_id and doc_type in (DocType.LOAN_AGREEMENT, DocType.AUDIT_NOTE) and self.llm_client.is_configured():
                 account_id = self._extract_account_id_llm(text[:3000])
                 doc.account_id = account_id
 
@@ -75,9 +75,28 @@ class DocumentClassifier:
         # Regex for ACC-XXXX or Account: ACC-XXXX or Счет: ACC-XXXX
         matches = re.findall(r"ACC-\d{4}", text, re.IGNORECASE)
         if matches:
-            # Normalize to uppercase
-            acc = matches[0].upper()
-            return acc
+            return matches[0].upper()
+
+        text_lower = text.lower()
+        company_account_map = {
+            "aktau port": "ACC-7801",
+            "ekibastuz energy": "ACC-7201",
+            "shymkent refinery": "ACC-7204",
+            "aktau power": "ACC-7802",
+            "aktobe power": "ACC-7803",
+            "aktobe refinery": "ACC-7804",
+            "aktobe water": "ACC-7805",
+            "astana office": "ACC-7806",
+            "astana property": "ACC-7807",
+            "aktau water": "ACC-7808",
+            "aktau energy": "ACC-7809",
+            "karaganda logistics": "ACC-7810",
+        }
+
+        for company_kw, acc_id in company_account_map.items():
+            if company_kw in text_lower:
+                return acc_id
+
         return None
 
     def _classify_doc_type(self, text: str) -> DocType:
